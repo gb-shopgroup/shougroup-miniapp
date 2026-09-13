@@ -1,0 +1,278 @@
+{
+	"pages": [
+		{
+			"path": "pages/index/index",
+			"style": { 
+				"navigationBarTitleText": "首页", 
+				"navigationStyle": "custom",
+				"enablePullDownRefresh": true, // 开启下拉刷新
+				"onReachBottomDistance": 50 // 距离底部 50px 时触发上拉加载
+			},
+			"enableShareAppMessage": true
+		},
+		{
+			"path": "pages/group/index",
+			"style": { "navigationBarTitleText": "团购", "navigationStyle": "custom" }
+		},
+		{
+			"path": "pages/group/cart",
+			"style": { "navigationBarTitleText": "购物车", "navigationStyle": "custom" }
+		},
+		{
+			"path": "pages/cart/index",
+			"style": { "navigationBarTitleText": "购物车", "navigationStyle": "custom" }
+		},
+		{
+			"path": "pages/login/index",
+			"style": { "navigationBarTitleText": "登录", "navigationStyle": "custom" }
+		},
+		{
+			"path": "pages/success/index",
+			"style": { "navigationBarTitleText": "成功", "navigationStyle": "custom" }
+		},
+		{
+			"path": "pages/collection/index",
+			"style": { "navigationBarTitleText": "合集", "navigationStyle": "custom" }
+		},
+		{
+			"path": "pages/order/index",
+			"style": { 
+				"navigationBarTitleText": "我的订单", 
+				"navigationStyle": "custom",
+				"enablePullDownRefresh": true, // 开启下拉刷新
+				"onReachBottomDistance": 50 // 距离底部 50px 时触发上拉加载
+			}
+		},
+		{
+			"path": "pages/order/detail",
+			"style": { "navigationBarTitleText": "订单详情", "navigationStyle": "custom" }
+		},
+		{
+			"path": "pages/order/refund",
+			"style": { "navigationBarTitleText": "申请退款", "navigationStyle": "custom" }
+		},
+		{
+			"path": "pages/order/refundDetail",
+			"style": { "navigationBarTitleText": "售后详情", "navigationStyle": "custom" }
+		},
+		{
+			"path": "pages/mine/index",
+			"style": { "navigationBarTitleText": "我的", "navigationStyle": "custom" }
+		},
+		{
+			"path": "pages/article/index",
+			"style": { "navigationBarTitleText": "文章", "navigationStyle": "custom" }
+		}
+	],
+	"globalStyle": {
+		"navigationBarTextStyle": "white",
+		"navigationBarTitleText": "店小团",
+		"navigationBarBackgroundColor": "#1890ff",
+		"backgroundColor": "#f5f5f5"
+	},
+	"tabBar": {
+		"color": "#666666",
+		"selectedColor": "#24c567",
+		"backgroundColor": "#ffffff",
+		"borderStyle": "white",
+		"list": [
+			{
+				"pagePath": "pages/index/index",
+				"text": "首页",
+				"iconPath": "static/tabbar/home.png",
+				"selectedIconPath": "static/tabbar/home-active.png"
+			},
+			{
+				"pagePath": "pages/order/index",
+				"text": "订单",
+				"iconPath": "static/tabbar/order.png",
+				"selectedIconPath": "static/tabbar/order-active.png"
+			},
+			{
+				"pagePath": "pages/cart/index",
+				"text": "购物车",
+				"iconPath": "static/tabbar/cart.png",
+				"selectedIconPath": "static/tabbar/cart-active.png"
+			},
+			{
+				"pagePath": "pages/mine/index",
+				"text": "个人中心",
+				"iconPath": "static/tabbar/user.png",
+				"selectedIconPath": "static/tabbar/user-active.png"
+			}
+		]
+	},
+	"subPackages": [
+		{
+			"root": "pagesA",
+			"pages": [
+				{ 
+					"path": "login/index",
+					"style": { "navigationBarTitleText": "团长-登录", "navigationStyle": "custom" }
+				},
+				{ 
+					"path": "info/index",
+					"style": { "navigationBarTitleText": "团长-我的", "navigationStyle": "custom" }
+				},
+				{ 
+					"path": "dashboard/index",
+					"style": { "navigationBarTitleText": "团长-控制台", "navigationStyle": "custom" }
+				},
+				{ 
+					"path": "business/index",
+					"style": { "navigationBarTitleText": "团长-账户信息", "navigationStyle": "custom" }
+				},
+				{ 
+					"path": "business/add",
+					"style": { "navigationBarTitleText": "团长-添加营业执照", "navigationStyle": "custom" }
+				},
+				{ 
+					"path": "business/account",
+					"style": { "navigationBarTitleText": "团长-对账单", "navigationStyle": "custom" }
+				},
+				{ 
+					"path": "business/cash",
+					"style": { "navigationBarTitleText": "团长-提现日志", "navigationStyle": "custom" }
+				},
+				{ 
+					"path": "point/index",
+					"style": { "navigationBarTitleText": "团长-自提点", "navigationStyle": "custom" }
+				},
+				{ 
+					"path": "point/add",
+					"style": { "navigationBarTitleText": "团长-添加自提点", "navigationStyle": "custom" }
+				},
+				{ 
+					"path": "staff/index",
+					"style": { "navigationBarTitleText": "团长-员工", "navigationStyle": "custom" }
+				},
+				{ 
+					"path": "staff/add",
+					"style": { "navigationBarTitleText": "团长-添加员工", "navigationStyle": "custom" }
+				},
+				{ 
+					"path": "goods/index",
+					"style": { "navigationBarTitleText": "团长-商品", "navigationStyle": "custom" }
+				},
+				{ 
+					"path": "goods/add",
+					"style": { "navigationBarTitleText": "团长-添加商品", "navigationStyle": "custom" }
+				},
+				{
+					"path": "goods/specNew",
+					"style": { "navigationBarTitleText": "团长-添加规格", "navigationStyle": "custom" }
+				},
+				{ 
+					"path": "goods/detail",
+					"style": { "navigationBarTitleText": "团长-商品详情", "navigationStyle": "custom" }
+				},
+				{ 
+					"path": "goods/category",
+					"style": { "navigationBarTitleText": "团长-商品分类", "navigationStyle": "custom" }
+				},
+				{ 
+					"path": "group/index",
+					"style": { "navigationBarTitleText": "团长-团购", "navigationStyle": "custom" },
+					"enableShareAppMessage": true
+				},
+				{ 
+					"path": "group/add",
+					"style": { "navigationBarTitleText": "团长-添加团购", "navigationStyle": "custom" }
+				},
+				{
+					"path": "group/detail",
+					"style": { "navigationBarTitleText": "团详情", "navigationStyle": "custom" },
+					"enableShareAppMessage": true
+				},
+				{
+					"path": "group/copy",
+					"style": { "navigationBarTitleText": "复制已有团", "navigationStyle": "custom" }
+				},
+				{ 
+					"path": "order/index",
+					"style": {
+						"navigationBarTitleText": "团长-订单列表", 
+						"navigationStyle": "custom",
+						"enablePullDownRefresh": true // 开启下拉刷新
+						//"onReachBottomDistance": 50 // 距离底部 50px 时触发上拉加载
+					}
+				},
+				{
+					"path": "order/refund",
+					"style": {
+						"navigationBarTitleText": "团长-退款订单列表", 
+						"navigationStyle": "custom",
+						"enablePullDownRefresh": true // 开启下拉刷新
+						//"onReachBottomDistance": 50 // 距离底部 50px 时触发上拉加载
+					}
+				},
+				{
+					"path": "order/detail",
+					"style": { "navigationBarTitleText": "团长-订单详情", "navigationStyle": "custom" }
+				},
+				{
+					"path": "order/refundDetail",
+					"style": {
+						"navigationBarTitleText": "售后详情",
+						"navigationStyle": "custom"
+					}
+				},
+				{ 
+					"path": "collection/index",
+					"style": { "navigationBarTitleText": "团长-合集", "navigationStyle": "custom" }
+				},
+				{ 
+					"path": "collection/add",
+					"style": { "navigationBarTitleText": "团长-添加合集", "navigationStyle": "custom" }
+				},
+				{ 
+					"path": "message/index",
+					"style": { "navigationBarTitleText": "团长-消息", "navigationStyle": "custom" }
+				},
+				{ 
+					"path": "commission/index",
+					"style": { "navigationBarTitleText": "团长-分账/佣金/提现", "navigationStyle": "custom" }
+				},
+				{ 
+					"path": "report/index",
+					"style": { "navigationBarTitleText": "团长-订单商品汇总", "navigationStyle": "custom" }
+				},
+				{
+					"path": "report/goods",
+					"style": { "navigationBarTitleText": "团长-订单商品汇总", "navigationStyle": "custom" }
+				},
+				{
+					"path": "report/sku",
+					"style": { "navigationBarTitleText": "团长-订单商品规格汇总", "navigationStyle": "custom" }
+				},
+				{
+					"path": "report/sku2",
+					"style": { "navigationBarTitleText": "团长-订单商品规格汇总", "navigationStyle": "custom" }
+				},
+				{
+					"path": "black/index",
+					"style": { "navigationBarTitleText": "团长-黑名单", "navigationStyle": "custom" }
+				},
+				{
+					"path": "black/add",
+					"style": { "navigationBarTitleText": "团长-添加黑名单", "navigationStyle": "custom" }
+				},
+				{
+					"path": "member/index",
+					"style": { "navigationBarTitleText": "团长-我的团员", "navigationStyle": "custom" }
+				},
+				{
+					"path": "member/detail",
+					"style": { "navigationBarTitleText": "团长-团员详情", "navigationStyle": "custom" }
+				}				
+			]
+		}
+	],
+	"preloadRule": {
+		"pages/mine/index": {
+			"network": "all",
+			"packages": ["pagesA"]
+		}
+	},
+	"uniIdRouter": {}
+}
