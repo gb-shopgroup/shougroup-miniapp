@@ -48,11 +48,12 @@ export default {
 			mobile: '',
 			avatarUrl: '/static/image/head.png',
 			avatarUploaded: false,
-			isRequesting: false // 请求锁，防止重复调用
+			isRequesting: false, // 请求锁，防止重复调用
+			pendingScene: '' // 扫码进入待登录的 scene（如门店核销码 shopId=4），登录成功后回跳
 		}
 	},
 	onLoad(options) {
-						
+
 		// 团长id
 		if(options.lid){
 			this.leaderId = options.lid
@@ -60,6 +61,10 @@ export default {
 		// 团购id
 		if (options.id) {
 			this.groupId = options.id
+		}
+		// 扫码进入待登录的 scene，登录成功后带原参数回跳
+		if (options.scene) {
+			this.pendingScene = options.scene
 		}
 		
 		// 已有openid直接使用, 没有openid重新获取
@@ -201,6 +206,11 @@ export default {
 				uni.showToast({ title: "登录成功" })
 				console.log('注册新用户成功：', userInfo)
 				
+				// 优先回跳扫码来源页（如门店核销页），保留原 scene 参数
+				if (this.pendingScene) {
+					uni.redirectTo({ url: '/pages/order/verify?scene=' + encodeURIComponent(this.pendingScene) })
+					return
+				}
 				// 跳转到团购页面
 				if(this.groupId > 0 && this.leaderId > 0){
 					uni.redirectTo({ url: '/pages/group/index?id=' + this.groupId + '&lid=' + this.leaderId})
@@ -221,7 +231,10 @@ export default {
 		gotoArticle(articleId){
 			
 			const url = '/pages/article/index?id=' + articleId
-			uni.navigateTo({ url: url }).catch(err => { uni.redirectTo({ url: url }) })
+			uni.navigateTo({
+				url,
+				fail: () => { uni.redirectTo({ url }) }
+			})
 		},
 		// 去首页
 		gotoHome(){

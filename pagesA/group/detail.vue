@@ -64,7 +64,18 @@
 
 		<view class="join-records">
 			<text class="records-title">跟团记录</text>
-			<text class="empty-record">暂无更多记录</text>
+			<view v-for="(record, index) in followRecords" :key="record.rowKey || index" class="record-row">
+				<image class="record-avatar" :src="record.avatar || '/static/image/head.png'" mode="aspectFill"></image>
+				<view class="record-main">
+					<view class="record-head">
+						<text class="record-name">{{ record.nickname || '团员' }}</text>
+						<text class="record-time">{{ record.time }}</text>
+					</view>
+					<text class="record-goods">{{ record.goodsDesc }}<text v-if="record.goodsNum"> ×{{ record.goodsNum }}</text></text>
+					<text v-if="record.mobile" class="record-mobile">{{ record.mobile }}</text>
+				</view>
+			</view>
+			<text v-if="followRecords.length === 0" class="empty-record">暂无更多记录</text>
 		</view>
 	</scroll-view>
 
@@ -136,9 +147,13 @@ export default {
 		pickupText(){
 			return Number(this.group.pickup || 1) === 1 ? '自提' : '邮递'
 		},
+		// 跟团记录：活动详情接口下发的 followRecords（真实订单数据，按购买时间倒序，最新 50 条）
+		followRecords(){
+			return Array.isArray(this.group.followRecords) ? this.group.followRecords : []
+		},
 		incomeText(){
-			const amount = Number(this.group.price || 0) * Number(this.group.order || 0)
-			return amount.toFixed(2)
+			// 订单总金额（不管退的，支付总金额），由接口 genTuanResponse.totalAmount 下发，不再用「团购价 × 订单数」估算
+			return Number(this.group.totalAmount || 0).toFixed(2)
 		},
 		visitorText(){
 			return `${Number(this.group.order || 0)}人来过`
@@ -150,10 +165,10 @@ export default {
 			return this.group.leaderAvatar || uni.getStorageSync('leader_avatar') || uni.getStorageSync('avatar') || '/static/image/head.png'
 		},
 		leaderMetaText(){
+			// 成员取 genTuanResponse.memberNum，跟团人次取 genTuanResponse.orderNum，均由接口返回。
 			const memberCount = Number(this.group.memberCount || 0)
-			const joinCount = Number(this.group.joinCount || this.group.order || 0)
-			const followCount = Number(this.group.followCount || 0)
-			return `成员${memberCount} | 跟团人次${joinCount} | ${followCount}人关注你`
+			const joinTimes = Number(this.group.joinTimes || 0)
+			return `成员${memberCount} | 跟团人次${joinTimes}`
 		},
 		shareData(){
 			return {
@@ -197,7 +212,8 @@ export default {
 			uni.navigateBack({ delta: 1 })
 		},
 		goOrders(){
-			uni.navigateTo({ url: '/pagesA/order/index' })
+			// 带 groupId 进入：订单列表固定该团，走自提点筛选 + 金额/商品汇总的完整视图
+			uni.navigateTo({ url: '/pagesA/order/index?groupId=' + this.groupId })
 		},
 		openManageSheet(){
 			this.manageSheetVisible = true
@@ -452,6 +468,63 @@ export default {
 	padding: 24rpx 30rpx;
 	background: #fff;
 	box-sizing: border-box;
+}
+
+/* 跟团记录：头像 + 姓名/时间 + 购买商品与数量 */
+.record-row {
+	display: flex;
+	align-items: flex-start;
+	gap: 18rpx;
+	padding: 22rpx 0;
+	border-bottom: 1rpx solid #f2f2f2;
+}
+
+.record-avatar {
+	width: 64rpx;
+	height: 64rpx;
+	border-radius: 50%;
+	flex-shrink: 0;
+	background: #f2f2f2;
+}
+
+.record-main {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 6rpx;
+}
+
+.record-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16rpx;
+}
+
+.record-name {
+	color: #222;
+	font-size: 27rpx;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.record-time {
+	flex-shrink: 0;
+	color: #999;
+	font-size: 23rpx;
+}
+
+.record-goods {
+	color: #666;
+	font-size: 24rpx;
+	line-height: 34rpx;
+}
+
+.record-mobile {
+	color: #999;
+	font-size: 23rpx;
 }
 
 .title-row {

@@ -30,7 +30,7 @@
 					v-for="(val, index2) in spec.valList" 
 					:key="index2" 
 					class="spec-item" 
-					:class="{'active': selectedSpecValIndexArray[spec.specId] === val.valId}" 
+					:class="{'active': isSpecValActive(spec.specId, val.valId)}" 
 					@click="selectSpecVal(spec.specId, val.valId)">
 					<view class="spec-name">{{ val.valName }}</view>
 				</view>
@@ -65,7 +65,7 @@
 </template>
 
 <script>
-import { createCartItemFromGoods, findSkuBySelectedSpec, normalizeSpecList } from "@/utils/groupPurchase.js"
+import { createCartItemFromGoods, findSkuBySelectedSpec, getCartItemKey, normalizeSpecList } from "@/utils/groupPurchase.js"
 
 export default {
 	data() {
@@ -113,6 +113,8 @@ export default {
 			// 键值对格式：规格值ID做key, 规格值名称做val
 			// 用来使用规格值ID快速获取规格值名称
 			selectedSpecValNamesArray: {},
+			// 父页面传入的购物车列表，用于回填已选规格与数量
+			cartGoodsList: [],
 			refresh: 0, // 主动触发 computed
 		}
 	},
@@ -137,10 +139,11 @@ export default {
 	// 方法集
 	methods: {
 		// 打开弹框
-		show(goodsInfo, balance){
+		show(goodsInfo, balance, cartGoodsList = []){
 			
 			// 显示弹框
 			this.showModal = true
+			this.cartGoodsList = Array.isArray(cartGoodsList) ? cartGoodsList : []
 			// 重置商品
 			this.goods = {}
 			// 商品ID
@@ -183,28 +186,62 @@ export default {
 			this.selectedSpecValIndexArray = {}
 			this.selectedSpecValNamesArray = {}
 
-			// 初始化规格键值对结构
-			this.initSelectSpecMapStruct()
+			// 初始化规格键值对结构：购物车已加过该商品时回填其规格
+			this.initSelectSpecMapStruct(this.resolveCartItemForGoods())
 			this.syncSelectedSpecText()
+			this.syncQuantityFromCart()
 		},
 		// 关闭弹框
 		hide(){
 			
 			this.showModal = false
 		},
-		// 初始化选中每个规格的第一个规格值
-		initSelectSpecMapStruct(){
+		// 购物车中该商品最后一次加入的规格行（购物车按加入顺序追加）
+		resolveCartItemForGoods(){
+			for (let i = this.cartGoodsList.length - 1; i >= 0; i -= 1) {
+				const item = this.cartGoodsList[i]
+				if (item && String(item.id) === String(this.goods.id)) return item
+			}
+			return null
+		},
+		// 步进器展示「该规格在购物车中已有的数量」，购物车没有该规格时回到 1
+		syncQuantityFromCart(){
+			const key = getCartItemKey(this.goods)
+			const item = this.cartGoodsList.find(row => getCartItemKey(row) === key)
+			this.goods.num = Math.max(1, Number(item && item.num || 0) || 1)
+		},
+		// 按购物车已选规格（skuids 或规格值名称）构造选中表；传入标识但一个都没命中时返回 null 便于回退
+		buildSelectedSpecMap(matchValues = []){
+			const hasMatchTarget = matchValues.length > 0
+			const selectedMap = {}
+			let matchedCount = 0
+			for (let i = 0; i < this.specList.length; i++) {
+				const spec = this.specList[i]
+				let vid = spec.valList[0].valId
+				for (let j = 0; j < spec.valList.length; j++) {
+					const val = spec.valList[j]
+					if (matchValues.indexOf(String(val.valId)) !== -1 || matchValues.indexOf(String(val.valName)) !== -1) {
+						vid = val.valId
+						matchedCount += 1
+						break
+					}
+				}
+				selectedMap[spec.specId] = vid
+			}
+			return !hasMatchTarget || matchedCount > 0 ? selectedMap : null
+		},
+		// 初始化选中的规格值：优先回填购物车已有规格，否则每个规格默认选第一个值
+		initSelectSpecMapStruct(cartItem = null){
+			
+			const cartValIds = String(cartItem && cartItem.skuids || '').split(',').map(item => item.trim()).filter(Boolean)
+			const cartValNames = String(cartItem && cartItem.skunames || '').split(/[,，]/).map(item => item.trim()).filter(Boolean)
 			
 			// 构建 selectedSpecValIndexArray 字典结构体
 			// 每个规格ID做key，规格值ID做val
 			// 用来标记每个规格选中那个具体的规格值, 例如 "尺寸"规格 选中 "id=1"的规格值 "2X"
-			this.selectedSpecValIndexArray = {}
-			for (let i = 0; i < this.specList.length; i++) {
-				// 默认选中第一个valId
-				let sid = this.specList[i].specId
-				let vid = this.specList[i].valList[0].valId
-				this.selectedSpecValIndexArray[sid] = vid
-			}
+			this.selectedSpecValIndexArray = this.buildSelectedSpecMap(cartValIds) ||
+				this.buildSelectedSpecMap(cartValNames) ||
+				this.buildSelectedSpecMap()
 			
 			// 构建 selectedSpecValNamesArray 字典结构体
 			// 每个规格值id做key，对应的规格值做value
@@ -272,6 +309,14 @@ export default {
 			// 注意：规格ID做key，规格值ID做val
 			this.selectedSpecValIndexArray[specId] = valId
 			this.syncSelectedSpecText()
+			// 切规格后数量回到该规格在购物车中的数量（没有则 1）
+			this.syncQuantityFromCart()
+		},
+		// 规格值是否选中。这里显式读取 refresh，让选中态与价格/文案走同一套刷新机制，
+		// 否则切换规格后高亮可能不更新，看起来像"换了规格没生效"。
+		isSpecValActive(specId, valId) {
+			this.refresh
+			return this.selectedSpecValIndexArray[specId] === valId
 		},
 		// 点击选择数量事件
 		changeQuantity(delta) {
@@ -283,6 +328,11 @@ export default {
 			
 			// 判断商品库存
 			this.syncSelectedSpecText()
+			// 多规格商品必须先选全规格并匹配到 SKU：否则下单会带 skuId=0，后端按 SKU 扣库存会失败
+			if(this.specList.length > 0 && !this.selectedSku){
+				uni.showToast({ title: '请选择完整的商品规格', icon: 'none', duration: 2500 })
+				return
+			}
 			if(this.goods.stock == 1 && this.goods.num > this.goods.balance){
 				uni.showToast({ title: '商品库存不足, 无法添加入购物车', icon: 'none' })
 				return

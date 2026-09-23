@@ -9,6 +9,20 @@ const maskAuthorization = (header = {}) => {
 	return safeHeader
 }
 
+const normalizeError = (err = {}) => ({
+	errMsg: err.errMsg || err.message || String(err),
+	code: err.code,
+	statusCode: err.statusCode
+})
+
+const logJson = (prefix, payload, logger = console.log) => {
+	try {
+		logger(`${prefix} ${JSON.stringify(payload)}`)
+	} catch (err) {
+		logger(`${prefix} ${String(payload)}`)
+	}
+}
+
 // 上传图片
 export function uploadImage(uploadURL, filePath) {
 	
@@ -19,7 +33,7 @@ export function uploadImage(uploadURL, filePath) {
 			"Content-Type": "multipart/form-data",
 			"Authorization": uni.getStorageSync('token') || ''
 		}
-		console.log('[API Upload Request]', {
+		logJson('[API Upload RequestJson]', {
 			url,
 			path: uploadURL,
 			method: 'POST',
@@ -34,7 +48,7 @@ export function uploadImage(uploadURL, filePath) {
 			//formData: { type: typeVal },
 			header,
 			success: res => {
-				console.log('[API Upload Response]', {
+				logJson('[API Upload ResponseJson]', {
 					url,
 					path: uploadURL,
 					method: 'POST',
@@ -48,23 +62,23 @@ export function uploadImage(uploadURL, filePath) {
 					} else {
 						uni.showToast({ title: data.msg || '上传失败', icon: 'none' })
 					reject(data.msg)
-				}
-			} catch (err) {
-				console.error('[API Upload Parse Error]', {
+					}
+				} catch (err) {
+				logJson('[API Upload ParseErrorJson]', {
 					url,
 					path: uploadURL,
 					rawData: res.data,
-					err
-				})
+					err: normalizeError(err)
+				}, console.error)
 				reject('返回数据解析异常')
 			}
 		},
 		fail: err => {
-			console.error('[API Upload Error]', {
+			logJson('[API Upload ErrorJson]', {
 				url,
 				path: uploadURL,
-				err
-			})
+				err: normalizeError(err)
+			}, console.error)
 			uni.showToast({ title: '网络请求失败', icon: 'none' })
 			reject(err)
 		},
@@ -100,7 +114,7 @@ export function delImage(params) {
 export function downImage(url) {
 
 	return new Promise((resolve, reject) => {
-		console.log('[API Download Request]', {
+		logJson('[API Download RequestJson]', {
 			url,
 			method: 'GET'
 		})
@@ -109,7 +123,7 @@ export function downImage(url) {
 			method: "GET",
 			success: (res) => {
 				const data = res.data
-				console.log('[API Download Response]', {
+				logJson('[API Download ResponseJson]', {
 					url,
 					method: 'GET',
 					statusCode: res.statusCode,
@@ -122,11 +136,11 @@ export function downImage(url) {
 				}
 			},
 			fail: (err) => {
-				console.error('[API Download Error]', {
+				logJson('[API Download ErrorJson]', {
 					url,
 					method: 'GET',
-					err
-				})
+					err: normalizeError(err)
+				}, console.error)
 				reject(err)
 			},
 			complete: () => {

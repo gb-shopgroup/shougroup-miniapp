@@ -43,6 +43,12 @@
 			</view>
 		</view>
 
+		<view class="form-row tap-row" @click="goSpecPage()">
+			<text class="label">商品规格</text>
+			<text class="value">{{ specSummary || '请完成规格设置' }}</text>
+			<text class="arrow">›</text>
+		</view>
+
 			<view class="form-row">
 				<text class="label required">商品价格</text>
 			<input class="row-input" type="digit" v-model="formData.price" placeholder="请输入商品价格" @input="onPriceInput('price', $event)" />
@@ -63,12 +69,6 @@
 		<view class="form-row" v-if="formData.isLimit == 1">
 			<text class="label">限购数量</text>
 			<input class="row-input" type="number" v-model="formData.limitNum" placeholder="请输入限购数量" />
-		</view>
-
-		<view class="form-row tap-row" @click="goSpecPage()">
-			<text class="label">商品规格</text>
-			<text class="value">{{ specSummary || '请完成规格设置' }}</text>
-			<text class="arrow">›</text>
 		</view>
 
 			<view class="form-row">
@@ -109,6 +109,7 @@ import { addLeaderGoodsInfo, getLeaderGoodsInfo, editLeaderGoodsInfo, getGoodsCa
 import {
 	buildSkuListWithServerIds,
 	buildGoodsSubmitPayload,
+	deriveGoodsFieldsFromSkuList,
 	extractCreatedGoodsId,
 	formatSpecSummary,
 	limitPricePrecision,
@@ -262,6 +263,7 @@ export default {
 						this.formData.specList = normalizeLeaderSpecList((data && data.specList) || [])
 						this.formData.specSource = (data && data.specSource) || 'goods'
 						this.formData.skuList = (data && data.skuList) || []
+						this.applySpecDerivedFields()
 					}
 				},
 				success: res => {
@@ -277,6 +279,15 @@ export default {
 					uni.redirectTo({ url })
 				}
 			})
+		},
+		// 规格设置完成后，把规格里的价格/库存/单位带入当前页面：
+		// 价格取所有规格里的最低价，库存取所有规格库存合计，单位取规格名（尺码/重量/鞋号/尺寸等）
+		applySpecDerivedFields() {
+			const derived = deriveGoodsFieldsFromSkuList(this.formData.skuList, this.formData.specList)
+			if (!derived.price && !derived.stockNum) return
+			if (derived.price) this.formData.price = derived.price
+			if (derived.stockNum) this.formData.stockNum = derived.stockNum
+			if (derived.unit) this.formData.unit = derived.unit
 		},
 		async refreshGoodsForm(id) {
 			const res = await getLeaderGoodsInfo({ id })
@@ -321,6 +332,12 @@ export default {
 			this.formData.unit = this.formData.unit.trim()
 			this.formData.price = limitPricePrecision(this.formData.price)
 			this.formData.price2 = limitPricePrecision(this.formData.price2)
+			// 有多规格时，库存必须是「所有规格库存之和」：保存前再兜一次，
+			// 避免回传事件丢失、或后续流程（如服务端刷新）把库存改回旧值。
+			if (this.hasValidSpecs) {
+				const specStock = deriveGoodsFieldsFromSkuList(this.formData.skuList, this.formData.specList).stockNum
+				if (specStock) this.formData.stockNum = specStock
+			}
 			this.formData.isStock = this.formData.stockNum ? 1 : 0
 
 			if (!this.formData.name) {
@@ -345,6 +362,11 @@ export default {
 			}
 			if (!this.formData.unit) {
 				uni.showToast({ title: '请输入商品单位', icon: 'none' })
+				return
+			}
+			// 不设置商品规格时，必须手工填全「价格 / 库存 / 单位」才能保存
+			if (!this.hasValidSpecs && !String(this.formData.stockNum || '').trim()) {
+				uni.showToast({ title: '请输入商品库存', icon: 'none' })
 				return
 			}
 

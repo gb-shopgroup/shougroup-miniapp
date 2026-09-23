@@ -133,14 +133,34 @@ export default {
 				return
 			}
 			try {
-				if (this.isEdit) await editLeaderPointInfo(payload)
-				else await addLeaderPointInfo(payload)
+				let createdId = 0
+				if (this.isEdit) {
+					await editLeaderPointInfo(payload)
+				} else {
+					const res = await addLeaderPointInfo(payload)
+					// 新增接口返回新自提点 id（Long），用于回传上级页面自动选中。
+					createdId = Number(res && res.data || 0)
+					this.emitCreatedPoint(createdId)
+				}
 				uni.showToast({ title: '保存成功', icon: 'success' })
 				uni.navigateBack()
 			} catch (err) {
 				console.log('保存自提点失败：', err)
 				uni.showToast({ title: '保存失败', icon: 'none' })
 			}
+		},
+		// 新增成功后把自提点回传给上级页面（如开团页），供其刷新并自动选中
+		emitCreatedPoint(id){
+			const eventChannel = this.getOpenerEventChannel && this.getOpenerEventChannel()
+			if (!eventChannel || !eventChannel.emit) return
+			const payload = buildLeaderPointPayload(this.formData)
+			eventChannel.emit('acceptLeaderPoint', {
+				point: {
+					id: Number(id || 0),
+					name: payload.name,
+					address: payload.address
+				}
+			})
 		}
 	}
 }

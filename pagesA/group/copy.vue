@@ -16,7 +16,7 @@
 		<view class="group-copy-card" v-for="item in groupList" :key="item.id">
 			<view class="row">
 				<text class="name">{{ item.name }}</text>
-				<text class="date">{{ item.endDateText }}</text>
+				<text class="date">{{ item.startDateText }}</text>
 			</view>
 			<text class="price">¥ {{ item.price }}</text>
 			<view class="imgs">

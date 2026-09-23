@@ -124,7 +124,7 @@
 		<view class="confirm-dialog" @click.stop>
 			<text class="confirm-title">是否要申请{{ refundTypeText }} <text>￥{{ refundAmountText }}</text></text>
 			<view v-for="goods in refundGoodsForSubmit" :key="goods.id" class="confirm-goods">
-				<text>{{ goods.name || '商品名称' }}</text>
+				<text>{{ goods.name || '商品名称' }}{{ goods.specText ? '（' + goods.specText + '）' : '' }}</text>
 				<text>退款 ￥{{ formatAmount(goods.refundAmount) }}</text>
 			</view>
 			<view class="confirm-actions">
@@ -142,10 +142,12 @@ import { uploadProductImage } from "@/api/upload.js"
 import {
 	buildMemberRefundPayload,
 	getMemberRefundFlagMeta,
+	getMemberRefundGoodsKey,
 	MEMBER_REFUND_FLAGS,
 	normalizeMemberOrder,
 	normalizeMemberRefundApplyInfo
 } from "@/utils/memberOrder.js"
+import { pickActionErrorMessage, showActionError } from "@/utils/feedback.js"
 
 const FALLBACK_REFUND_REASONS = ['多拍、错拍、不想要', '商品破损', '商品与描述不符', '未按约定时间送达', '其他原因']
 	.map((reason, index) => ({ id: index + 1, reason, sort: index + 1, status: 1 }))
@@ -177,9 +179,9 @@ export default {
 			return Boolean(this.orderInfo.orderNo)
 		},
 		refundableGoods() {
+			// 可退商品由接口 refundGoods 下发，前端不再按可退数量二次筛选（会把接口给出的可退行误删）
 			return this.refundApplyInfo.goods
 				.map((goods, index) => Object.assign({}, goods, { refundKey: this.refundGoodsKey(goods, index) }))
-				.filter(goods => this.maxRefundNum(goods) > 0)
 		},
 		selectedGoods() {
 			if (this.isOnlyRefund) return this.refundableGoods
@@ -286,11 +288,12 @@ export default {
 			this.selectedQtyMap = {}
 			try {
 				const res = await getRefundApplyOrderInfo({ orderNo: this.orderInfo.orderNo, refundFlag: Number(flag) })
-				const info = normalizeMemberRefundApplyInfo(res.data || {}, flag)
+				const info = normalizeMemberRefundApplyInfo(res.data || {}, flag, this.orderInfo.goods || [])
 				this.onlyRefundUsed = this.onlyRefundUsed || info.onlyRefundUsed
 				this.refundApplyInfo = info
 				if (Number(flag) === MEMBER_REFUND_FLAGS.ONLY_REFUND && this.onlyRefundUsed) return
 				this.initSelection()
+				this.logRefundApplyDebug(flag, res.data || {}, info)
 			} catch (err) {
 				console.log('加载可退款商品失败：', err)
 				this.refundApplyInfo = normalizeMemberRefundApplyInfo({}, flag)
@@ -310,6 +313,13 @@ export default {
 			this.loadRefundApplyInfo(nextFlag)
 		},
 		initSelection() {
+			// 仅退款：整单一次性退回（行锁定、数量取满），符合「仅退款只能发起一次且退全部未核销商品」。
+			// 退款退货：默认**不选中任何行**，由用户逐行勾选并自己填数量（修复「一进来就全部选中」）。
+			if (!this.isOnlyRefund) {
+				this.selectedMap = {}
+				this.selectedQtyMap = {}
+				return
+			}
 			const map = {}
 			const qtyMap = {}
 			this.refundableGoods.forEach(goods => {
@@ -325,7 +335,8 @@ export default {
 			const checked = !this.selectedMap[key]
 			this.selectedMap = Object.assign({}, this.selectedMap, { [key]: checked })
 			if (checked && !this.selectedQtyMap[key]) {
-				this.selectedQtyMap = Object.assign({}, this.selectedQtyMap, { [key]: this.maxRefundNum(goods) })
+				// 勾选 = 选中该行，不等于把该行全退：数量默认 1，由用户用步进器调整
+				this.selectedQtyMap = Object.assign({}, this.selectedQtyMap, { [key]: 1 })
 			}
 		},
 		toggleAll() {
@@ -380,14 +391,15 @@ export default {
 				images: this.images
 			})
 			try {
-				await refundOrder(payload)
+				// silentToast：失败原文由本页 modal 展示，请求层不再重复弹 toast
+				await refundOrder(payload, { silentToast: true })
 				if (this.refundFlag === MEMBER_REFUND_FLAGS.ONLY_REFUND) this.onlyRefundUsed = true
 				uni.showToast({ title: '提交成功', icon: 'success' })
 				this.confirmVisible = false
 				uni.redirectTo({ url: `/pages/order/refundDetail?orderNo=${encodeURIComponent(this.orderInfo.orderNo)}&refundFlag=${this.refundFlag}` })
 			} catch (err) {
 				console.log('申请退款失败：', err)
-				uni.showToast({ title: String((err && (err.msg || err.message)) || '提交失败'), icon: 'none' })
+				showActionError(pickActionErrorMessage(err, '提交失败'), { title: '申请退款失败' })
 			} finally {
 				this.submitting = false
 			}
@@ -420,14 +432,40 @@ export default {
 				}
 			}).filter(item => item.refundNum > 0 && item.refundAmount > 0)
 		},
+		logRefundApplyDebug(flag, rawInfo = {}, normalizedInfo = {}) {
+			const pickGoods = (goods = {}) => ({
+				id: goods.id,
+				goodsId: goods.goodsId,
+				skuId: goods.skuId,
+				skuIds: goods.skuIds,
+				name: goods.goodsName || goods.name,
+				goodsNum: goods.goodsNum,
+				num: goods.num,
+				receiptNum: goods.receiptNum,
+				refundNum: goods.refundNum,
+				refundGoodsNum: goods.refundGoodsNum,
+				applyRefund: goods.applyRefund,
+				availableRefundNum: goods.availableRefundNum
+			})
+			const debugPayload = {
+				orderNo: this.orderInfo.orderNo,
+				refundFlag: Number(flag),
+				hasRawRefundGoods: Array.isArray(rawInfo.refundGoods),
+				rawRefundGoods: (rawInfo.refundGoods || []).map(pickGoods),
+				rawGoodsFallback: (rawInfo.goods || []).map(pickGoods),
+				baseOrderGoods: (this.orderInfo.goods || []).map(pickGoods),
+				normalizedGoods: (normalizedInfo.goods || []).map(pickGoods),
+				renderGoods: this.refundableGoods.map(pickGoods),
+				selectedQtyMap: this.selectedQtyMap
+			}
+			console.log('[RefundApplyDebugJson] ' + JSON.stringify(debugPayload))
+		},
 		isGoodsSelected(goods) {
 			return Boolean(this.selectedMap[goods.refundKey])
 		},
 		refundGoodsKey(goods, index) {
-			const goodsId = Number(goods.goodsId || 0)
-			if (goodsId > 0) return `goods-${goodsId}`
-			const id = Number(goods.id || goods.orderGoodsId || 0)
-			return id > 0 ? `order-goods-${id}` : `index-${index}`
+			// 必须优先按「订单商品行 id」：同一 goodsId 的多规格商品是多行，用 goodsId 会撞键
+			return getMemberRefundGoodsKey(goods, index)
 		},
 		maxRefundNum(goods) {
 			return Math.max(Number(goods.availableRefundNum || 0), 0)
@@ -436,7 +474,8 @@ export default {
 			const max = this.maxRefundNum(goods)
 			if (this.isOnlyRefund) return max
 			if (!this.isGoodsSelected(goods)) return 0
-			const current = Number(this.selectedQtyMap[goods.refundKey] || max)
+			// 未显式设过数量时默认 1 件（不是全退），再夹到 [1, 可退数量]
+			const current = Number(this.selectedQtyMap[goods.refundKey] || 1)
 			return Math.min(Math.max(current, 1), max)
 		},
 		changeRefundNum(goods, delta) {

@@ -147,6 +147,9 @@ export function resolveSelectedPickupPointId(pointList = [], persistedPointId = 
 
 export function createCartItemFromGoods(goodsInfo = {}, selection = {}) {
 	const item = {
+		// 该商品是否多规格：多规格商品必须有 skuId 才能下单（后端按 SKU 扣库存），
+		// 购物车与下单前都用它做校验，避免带着 skuId=0 提交。
+		hasSpecs: Array.isArray(goodsInfo.specs) && goodsInfo.specs.length > 0,
 		id: goodsInfo.id,
 		name: goodsInfo.name || '',
 		img: goodsInfo.img || '',
@@ -171,6 +174,13 @@ export function createCartItemFromGoods(goodsInfo = {}, selection = {}) {
 	return item
 }
 
+// 找出「多规格但没选到 SKU」的购物车条目：下单前据此拦截，
+// 否则请求体里 skuId=0、skuids 为空，后端扣减 SKU 库存会失败。
+export function pickInvalidSpecCartItems(cartGoodsList = []) {
+	return (Array.isArray(cartGoodsList) ? cartGoodsList : []).filter(item =>
+		item && item.hasSpecs && Number(item.skuId || 0) <= 0)
+}
+
 export function mergeCartGoods(cartGoodsList = [], goods = {}) {
 	const list = cartGoodsList.map(item => Object.assign({}, item))
 	const index = list.findIndex(item => item.id == goods.id && (item.skuids || '') == (goods.skuids || ''))
@@ -179,6 +189,20 @@ export function mergeCartGoods(cartGoodsList = [], goods = {}) {
 		return list
 	}
 	return list.concat(Object.assign({}, goods))
+}
+
+// 选规格弹窗的写入语义：弹窗步进器展示的就是购物车中该规格的数量，
+// 确认时按「商品 + 规格」覆盖为 num（区别于 mergeCartGoods 的累加，避免同步后又翻倍）。
+export function setCartGoodsQuantity(cartGoodsList = [], goods = {}) {
+	const list = cartGoodsList.map(item => Object.assign({}, item))
+	const key = getCartItemKey(goods)
+	const index = list.findIndex(item => getCartItemKey(item) === key)
+	if (index < 0) return list.concat(Object.assign({}, goods))
+	list[index].num = Math.max(Number(goods.num || 0), 0)
+	list[index].price = Number(goods.price || 0)
+	list[index].balance = Number(goods.balance || 0)
+	if (goods.img) list[index].img = goods.img
+	return list
 }
 
 export function getCartGoodsCount(cartGoodsList = []) {

@@ -98,8 +98,12 @@ export function getLeaderGroupStatus(row = {}, now = Date.now()) {
 	const start = toNumber(row.startTime)
 	const end = toNumber(row.endTime)
 	const current = Math.floor(Number(now) / 1000)
-	if (start && current < start) return { value: 2, text: '未开始', tone: 'warning' }
+	// 时间已过就是终态，优先于下架标记（下架的团也要显示已结束，且不能再开启）
 	if (end && current > end) return { value: 3, text: '已结束', tone: 'muted' }
+	// 团长主动下架（isClose != 0）：时间窗内也不能显示为「活动中」，单独一个状态。
+	// B 端文案用「已关闭」；C 端同字段为「已下线」（见 utils/memberHome.js）。
+	if (Number(row.isClose || 0) !== 0) return { value: 4, text: '已关闭', tone: 'muted' }
+	if (start && current < start) return { value: 2, text: '未开始', tone: 'warning' }
 	return { value: 1, text: '活动中', tone: 'success' }
 }
 
@@ -157,9 +161,49 @@ export function getLeaderGroupCoverImages(group = {}) {
 	return source.filter((img, index) => source.indexOf(img) === index)
 }
 
+// 活动详情接口返回的跟团记录 followRecords（真实订单数据：已支付、未取消，
+// 按购买时间倒序取最新 50 条）。
+// 后端字段（以 Java 类为准）：mobile 手机号 / name 姓名(昵称) / avatar 头像 /
+// buyTime 购买时间(yyyy-MM-dd HH:mm:ss, 取支付时间) / goodsDesc 购买商品描述 /
+// buyNum 购买数量(订单商品数量合计)。
+// 展示层统一用 nickname / time / goodsNum，这里做一次映射（并保留常见别名字段兜底）。
+export function normalizeLeaderFollowRecords(list = []) {
+	return (Array.isArray(list) ? list : []).map((row, index) => {
+		const mobile = row.mobile || row.telephone || ''
+		return {
+			mobile,
+			nickname: row.name || row.nickname || row.trueName || '团员',
+			avatar: row.avatar || row.headImg || row.headimgurl || '',
+			time: row.buyTime || row.time || row.addTime || row.payTime || '',
+			goodsDesc: row.goodsDesc || row.goodsName || '',
+			goodsNum: toNumber(row.buyNum || row.goodsNum || row.num || 0),
+			// 列表 key：同一用户可多次跟团，用「手机号-下标」保证唯一
+			rowKey: `${mobile || 'record'}-${index}`
+		}
+	})
+}
+
+// 团购标签列表（后台可增删改）：统一成 { id, name, color }
+export function normalizeLeaderGroupTagList(list = []) {
+	const rows = Array.isArray(list)
+		? list
+		: ((list && (list.records || list.list || list.rows || list.data)) || [])
+	return (Array.isArray(rows) ? rows : []).map(item => ({
+		id: Number((item && (item.tagId || item.id)) || 0),
+		name: String((item && (item.tagName || item.name)) || '').trim(),
+		color: String((item && (item.tagColor || item.color)) || '').trim()
+	})).filter(item => item.name)
+}
+
 export function normalizeLeaderGroup(row = {}) {
 	const goods = row.goods || row.lists || []
 	const shop = row.shop || row.leaderShop || row.shopInfo || {}
+	// 团长端订单汇总：实际收入/退款金额/跟团人数，由接口的 groupSummaryResponse 单独下发。
+	// 汇总存在时以汇总为准（0 也是有效值，不能回退旧字段）；未下发才沿用旧字段兜底。
+	const summary = row.groupSummaryResponse && typeof row.groupSummaryResponse === 'object' ? row.groupSummaryResponse : null
+	// 跟团汇总：成员/跟团人次（订单数），由接口的 genTuanResponse 单独下发，与列表卡片的「跟团人数」口径不同。
+	const genTuan = row.genTuanResponse && typeof row.genTuanResponse === 'object' ? row.genTuanResponse : null
+	const legacyJoinCount = row.joinCount || row.joinNum || row.groupNum || row.orderNum || row.order || shop.joinCount || shop.joinNum || shop.groupNum || shop.orderNum || 0
 	const leaderAvatar = row.leaderAvatar || row.shopLogo || row.logo || row.shopAvatar || row.avatar || row.headImg || row.headimgurl || row.wxAvatar ||
 		shop.shopLogo || shop.logo || shop.shopAvatar || shop.avatar || shop.headImg || shop.headimgurl || shop.wxAvatar || ''
 	const normalized = {
@@ -169,8 +213,16 @@ export function normalizeLeaderGroup(row = {}) {
 		name: row.name || '',
 		shopName: row.shopName || row.leaderName || row.nickname || shop.name || shop.shopName || '',
 		leaderAvatar,
-		memberCount: toNumber(row.memberCount || row.memberNum || row.members || shop.memberCount || shop.memberNum || 0),
-		joinCount: toNumber(row.joinCount || row.joinNum || row.groupNum || row.orderNum || row.order || shop.joinCount || shop.joinNum || shop.groupNum || shop.orderNum || 0),
+		memberCount: toNumber(genTuan && genTuan.memberNum !== undefined && genTuan.memberNum !== null ? genTuan.memberNum : (row.memberCount || row.memberNum || row.members || shop.memberCount || shop.memberNum || 0)),
+		joinCount: toNumber(summary && summary.orderNum !== undefined && summary.orderNum !== null ? summary.orderNum : legacyJoinCount),
+		// 跟团人次（订单数），活动详情头部使用；与「跟团人数」不是同一口径。
+		joinTimes: toNumber(genTuan && genTuan.orderNum !== undefined && genTuan.orderNum !== null ? genTuan.orderNum : legacyJoinCount),
+		// 订单总金额（不管退的，支付总金额），活动详情底部展示，由 genTuanResponse 下发。
+		totalAmount: toNumber(genTuan && genTuan.totalAmount),
+		// 跟团记录（活动详情接口新下发）：供活动详情页「跟团记录」区块展示
+		followRecords: normalizeLeaderFollowRecords(row.followRecords),
+		realIncome: toNumber(summary && summary.totalFee),
+		refundAmount: toNumber(summary && summary.refundFee),
 		followCount: toNumber(row.followCount || row.followNum || row.fansCount || row.fansNum || row.subscribeCount || row.subscribeNum || shop.followCount || shop.followNum || shop.fansCount || shop.fansNum || 0),
 		pickup: Number(row.pickup || 1),
 		price: Number(row.price || 0),
@@ -179,7 +231,10 @@ export function normalizeLeaderGroup(row = {}) {
 		img2: row.img2 || '',
 		img3: row.img3 || '',
 		info: row.info || row.groupInfo || '',
-		label: row.label || row.labels || '',
+		// 团购标签：后台已改为标签实体（tagId/tagName），label 保留为标签名便于展示
+		tagId: Number(row.tagId || 0),
+		tagName: row.tagName || row.label || row.labels || '',
+		label: row.tagName || row.label || row.labels || '',
 		pointId: toNumber(row.pointId || row.pid || row.point || 0),
 		pointName: row.pointName || '',
 		virtual: Number(row.virtual || row.virtualOrder || 0),
@@ -194,7 +249,8 @@ export function normalizeLeaderGroup(row = {}) {
 	return {
 		...normalized,
 		timeText: formatGroupTimeRange(normalized.startTime, normalized.endTime),
-		endDateText: formatGroupShortDate(normalized.endTime),
+		// 卡片日期一律取开团时间，避免再有人误用结束时间。
+		startDateText: formatGroupShortDate(normalized.startTime),
 		statusInfo: getLeaderGroupStatus(normalized)
 	}
 }
@@ -218,7 +274,8 @@ export function buildLeaderGroupSubmitPayload(form = {}) {
 		name: form.name || '',
 		pickup: Number(form.pickup || 1),
 		info: form.info || '',
-		label: form.label || '',
+		// GroupActRequest：标签字段为 tagId（0=未选择）
+		tagId: toNumber(form.tagId || 0),
 		pointId: toNumber(form.pointId || form.pid || form.point || 0),
 		virtual: Number(form.virtual || 0),
 		startTime: toNumber(form.startTime),
@@ -243,6 +300,8 @@ export function buildLeaderGroupCopyDraft(group = {}) {
 		name: source.name,
 		pickup: source.pickup,
 		info: source.info,
+		tagId: source.tagId || 0,
+		tagName: source.tagName || source.label || '',
 		label: source.label,
 		pointId: source.pointId,
 		pointName: source.pointName,

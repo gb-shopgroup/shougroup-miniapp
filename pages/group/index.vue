@@ -23,16 +23,27 @@
 	</view>
 	<view class="group-title-card" v-if="hasGroupIntroContent">
 		<view class="group-name">{{ groupInfo.name }}</view>
-		<view class="self-pick-tag" v-if="pickupText">{{ pickupText }}</view>
+		<view class="group-tag-row" v-if="groupLabelStyle || pickupText">
+			<!-- 团购标签：与首页卡片同一套药丸（接口补 tagId/tagName 后自动渲染） -->
+			<view class="group-label" v-if="groupLabelStyle"
+				:style="{ color: groupLabelStyle.color, borderColor: groupLabelStyle.color }">
+				<view class="label-badge" v-if="groupLabelStyle.icon || groupLabelStyle.ring">
+					<image class="label-ring" v-if="groupLabelStyle.ring" :src="groupLabelStyle.ring" mode="aspectFit"></image>
+					<image class="label-icon" v-if="groupLabelStyle.icon" :src="groupLabelStyle.icon" mode="aspectFit"></image>
+				</view>
+				<text class="label-text">{{ groupLabelStyle.text }}</text>
+			</view>
+			<view class="self-pick-tag" v-if="pickupText">{{ pickupText }}</view>
+		</view>
 	</view>
 	<view class="group-stat-line" v-if="hasGroupIntroContent">
 		<text v-if="groupCreateTimeText">{{ groupCreateTimeText }} 发布</text>
 		<text class="end-time" v-if="groupEndTimeText">{{ groupEndTimeText }} 结束</text>
 	</view>
-	<view class="group-stat-line" v-if="hasGroupIntroContent && (groupInfo.num || groupLogs.length > 0)">
-		<text>{{ groupInfo.num || 0 }}人查看</text>
-		<text v-if="groupLogs.length > 0">{{ groupLogs.length }}次跟团</text>
-	</view>
+		<view class="group-stat-line" v-if="hasGroupIntroContent && (groupInfo.num || groupJoinCount > 0)">
+			<text>{{ groupInfo.num || 0 }}人查看</text>
+			<text v-if="groupJoinCount > 0">{{ groupJoinCount }}次跟团</text>
+		</view>
 	<view class="group-rich-section" v-if="hasGroupIntroContent">
 		<view class="rich-content">
 			<rich-text :nodes="groupRichTextNodes"></rich-text>
@@ -70,7 +81,7 @@
 					</button>
 					<view class="sold-count" v-if="getSoldText(item)">{{ getSoldText(item) }}</view>
 					<view class="btn-add-cart disabled" v-if="isProductSoldOut(item)">库存不足</view>
-					<view class="cart-stepper" v-else-if="isBlackMember==false && getSelectedGoodsCount(item) > 0">
+					<view class="cart-stepper" v-else-if="isBlackMember==false && !hasSelectableSpec(item) && getSelectedGoodsCount(item) > 0">
 						<view class="cart-stepper-btn minus" @click.stop="decreaseSelectedGoods(item)">－</view>
 						<view class="cart-stepper-num">{{ getSelectedGoodsCount(item) }}</view>
 						<view class="cart-stepper-btn plus" @click.stop="increaseSelectedGoods(item)">＋</view>
@@ -84,22 +95,23 @@
 	<view class="logs-section" v-if="groupLogs.length > 0">
 		<view class="section-header">
 			<text class="section-title">跟团记录</text>
-		</view>
-		<view class="group-logs">
-			<view class="group-logs-item" v-for="(item, index) in groupLogs" :key="index" >
-				<text class="log-code">{{ getLogCode(item, index) }}</text>
-				<image class="group-logs-item-img" :src="item.userAvatar || '/static/image/head.png'" mode="aspectFill"></image>
-				<view class="group-logs-item-content">
-					<view class="group-logs-item-user">
-						<text class="grey">{{ item.userTime || '' }}</text>
-					</view>
-					<view class="group-logs-item-user">
-						<text class="grey">{{ item.userGoodsName }}</text>
-					</view>
-				</view>
-				<text class="log-num" v-if="item.userGoodsNum">+{{ item.userGoodsNum }}</text>
 			</view>
-		</view>
+			<view class="group-logs">
+				<view class="group-logs-item" v-for="(item, index) in groupLogs" :key="index">
+					<text class="log-code">{{ getLogCode(item, index) }}</text>
+					<image class="group-logs-item-img" :src="item.avatar || '/static/image/head.png'" mode="aspectFill"></image>
+					<view class="group-logs-item-content">
+						<view class="group-logs-item-user" v-if="item.name || item.time">
+							<text v-if="item.name">{{ item.name }}</text>
+							<text class="grey" v-if="item.time">{{ item.name ? ' ' : '' }}{{ item.time }}</text>
+						</view>
+						<view class="group-logs-item-user" v-if="item.goodsName">
+							<text class="grey">{{ item.goodsName }}</text>
+						</view>
+					</view>
+					<text class="log-num" v-if="item.num">{{ formatLogNum(item.num) }}</text>
+				</view>
+			</view>
 		<view class="more-logs" v-if="groupLogs.length > 2">
 			<text class="more-logs-text">查看更多</text>
 			<view class="more-logs-arrow"></view>
@@ -144,9 +156,9 @@ import AddCart from "./add.vue"
 import CartDialog from "./cartDialog.vue"
 import parseHtml from "@/utils/html-parser.js"
 import { hasGroupIntroContent } from "@/utils/groupPresentation.js"
-import { getCartQuantityForGoods, isGoodsSoldOut, mergeCartGoods, normalizeGroupGoodsList, updateCartGoodsQuantity } from "@/utils/groupPurchase.js"
+import { getCartQuantityForGoods, isGoodsSoldOut, normalizeGroupGoodsList, setCartGoodsQuantity, updateCartGoodsQuantity } from "@/utils/groupPurchase.js"
 import { formatGroupDateTime, normalizeRichTextImages } from "@/utils/leaderGroup.js"
-import { isMemberGroupOnline, resolveMemberHomeLogsData } from "@/utils/memberHome.js"
+import { getGroupLabelStyle, isMemberGroupOnline, normalizeMemberHomeRecord, resolveMemberHomeLogsData } from "@/utils/memberHome.js"
 import { 
 	getGroupShop, 
 	getGroupInfo, 
@@ -168,12 +180,10 @@ export default {
 			cartGoodsTotal: 0,
 			// 更新购物车某个商品购买数量
 			numFlag: 0,
-			// 跟团记录
-			groupLogs: [],
-			groupIndex: 0,
-			groupLogs2: [],
-			timer: null,
-			pendingAddCartContext: null,
+				// 跟团记录
+				groupLogs: [],
+				groupLogsTotal: 0,
+				pendingAddCartContext: null,
 			// 是否黑名单
 			isBlackMember: false
 		}
@@ -211,14 +221,9 @@ export default {
 		const token = uni.getStorageSync('token')
 		if(token) this.initIsBackMember()
 	},
-	onUnload() {
-		
-		// 结束计时器
-		this.stopTimer()
-	},
-	onShow() {
-		this.restoreSessionCart()
-	},
+		onShow() {
+			this.restoreSessionCart()
+		},
 	onShareAppMessage(res) {
 		const dataset = (res && res.target && res.target.dataset) || {}
 		const goodsId = Number(dataset.shareGoodsId || dataset.goodsId || 0)
@@ -266,11 +271,15 @@ export default {
 			
 			return this.formatGroupTimeValue(this.groupInfo.createTime || this.groupInfo.time)
 		},
-		groupEndTimeText(){
-			
-			return this.formatGroupTimeValue(this.groupInfo.endTime)
-		},
-		displayGoods(){
+			groupEndTimeText(){
+				
+				return this.formatGroupTimeValue(this.groupInfo.endTime)
+			},
+			groupJoinCount(){
+				
+				return Number(this.groupLogsTotal || 0)
+			},
+			displayGoods(){
 			
 			return this.products
 		},
@@ -292,9 +301,13 @@ export default {
 			const count = this.shopInfo.joinNum || this.shopInfo.groupNum || this.shopInfo.orderNum || 0
 			return count ? `跟团人次${count}+` : ''
 		},
+		// 团购标签样式：按标签实体约定读 tagName（label 兜底），tagColor 支持自定义标签
+		groupLabelStyle(){
+			return getGroupLabelStyle(this.groupInfo.tagName || this.groupInfo.label || '', this.groupInfo.tagColor || '')
+		},
 		pickupText(){
 			
-			if(this.groupInfo.label) return this.groupInfo.label
+			// 注意：标签字段（tagName/label）不是提货方式，不能拿来当自提/快递文案
 			if(this.groupInfo.pickupText) return this.groupInfo.pickupText
 			if(this.groupInfo.pickup == 1) return '客户自提'
 			if(this.groupInfo.pickup == 2) return '快递配送'
@@ -340,16 +353,32 @@ export default {
 		getSelectedGoodsCount(item){
 			return getCartQuantityForGoods(this.cartGoodsList, item.id)
 		},
+		// 多规格商品必须保留「加入购物车」入口：规格数量是商品级汇总，
+		// 一旦被步进器顶掉入口，加过一个规格后就再也无法选择其它规格。
+		hasSelectableSpec(item){
+			return Array.isArray(item && item.specs) && item.specs.length > 0
+		},
 		getSelectedCartIndex(item){
 			for(let i = this.cartGoodsList.length - 1; i >= 0; i--){
 				if(this.cartGoodsList[i].id == item.id) return i
 			}
 			return -1
 		},
-		getLogCode(item, index){
-			
-			return item.code || item.id || item.orderId || (3268 - index)
-		},
+			getLogCode(item, index){
+				
+				return item.code || item.id || item.orderId || (3268 - index)
+			},
+			formatLogNum(num){
+				
+				const value = String(num || '')
+				return value.startsWith('+') ? value : `+${value}`
+			},
+			normalizeGroupLogs(logs = []){
+				
+				return (Array.isArray(logs) ? logs : [])
+					.map(normalizeMemberHomeRecord)
+					.filter(item => item.name || item.avatar || item.time || item.goodsName)
+			},
 		// 获取团长店铺
 		async initGroupShop() {
 			try {
@@ -389,11 +418,23 @@ export default {
 				console.log('获取团购详情失败：', err)
 			}
 		},
-		getCachedGroupInfo(){
-			const app = getApp()
-			const map = app.globalData.sessionGroupDetailMap || {}
-			return map[this.groupId] || {}
-		},
+			getCachedGroupInfo(){
+				const app = getApp()
+				const map = app.globalData.sessionGroupDetailMap || {}
+				return map[this.groupId] || {}
+			},
+			applyCachedGroupLogs(){
+				
+				const records = this.normalizeGroupLogs(this.getCachedGroupInfo().records || [])
+				if(records.length === 0) return false
+				this.applyGroupLogs(records)
+				return true
+			},
+			applyGroupLogs(records = []){
+				
+				this.groupLogsTotal = records.length
+				this.groupLogs = records
+			},
 		mergeGroupInfoWithCache(detail = {}){
 			const cached = this.getCachedGroupInfo()
 			const merged = Object.assign({}, cached, detail)
@@ -451,8 +492,8 @@ export default {
 				return
 			}
 			
-			// 显示弹框, 重复添加商品的时候, 累计它的数量即可
-			this.$refs.addCartRef.show(product, goodsStockVal)
+			// 显示弹框；把购物车传进去，用于回填该商品已选规格与数量
+			this.$refs.addCartRef.show(product, goodsStockVal, this.cartGoodsList)
 		},
 		getCurrentCartContext(){
 			return {
@@ -474,8 +515,8 @@ export default {
 			app.globalData.sessionCartContext = targetContext
 			this.pendingAddCartContext = null
 			
-			// 已经添加到购物车的商品按商品ID + 文本规格累加数量
-			this.cartGoodsList = mergeCartGoods(this.cartGoodsList, goods)
+			// 弹窗步进器展示的就是购物车中该规格的数量，确认时按「商品 + 规格」覆盖写入
+			this.cartGoodsList = setCartGoodsQuantity(this.cartGoodsList, goods)
 			
 			// 同步计算订单合计
 			this.cartGoodsTotal = this.cartGoodsList.reduce((sum, item) => sum + Number(item.num || 0), 0)
@@ -567,49 +608,20 @@ export default {
 			uni.switchTab({ url: '/pages/order/index' })
 		},
 		// 初始化跟团记录
-		async initLeaderGroupLogs(){
-			
-			try {
-				const param = { id:this.groupId }
-				const res = await getMemberGroupActivityLogs2(param)
-				const logs = resolveMemberHomeLogsData(res.data)
-				this.groupLogs = logs.slice(0, 2)
-				this.groupLogs2 = logs.slice(2)
-			} catch (err) {
-				console.log('初始化跟团记录失败：', err)
-			}
-			
-			// 开启计时器
-			this.startTimer()
-		},
-		// 随机5-10秒中
-		getRandomDelay() {
-			
-			return Math.floor(Math.random() * 9000) + 5000
-		},
-		// 开启计时器
-		startTimer() {
-			
-			this.stopTimer()
-			this.timer = setTimeout(() => this.addGroupLogs(), this.getRandomDelay())
-		},
-		// 结束计时器
-		stopTimer() {
-			
-			clearTimeout(this.timer)
-			this.timer = null
-		},
-		// 动态添加跟团记录
-		addGroupLogs(){
-			
-			if(this.groupIndex < this.groupLogs2.length){
-				this.groupLogs.push(this.groupLogs2[this.groupIndex])
-				this.groupIndex++
-				this.startTimer()
-			}else{
-				this.stopTimer()
-			}
-		},
+			async initLeaderGroupLogs(){
+				
+				try {
+					const hasCachedLogs = this.applyCachedGroupLogs()
+					if(!hasCachedLogs){
+						const param = { id:this.groupId }
+						const res = await getMemberGroupActivityLogs2(param)
+						const logs = this.normalizeGroupLogs(resolveMemberHomeLogsData(res.data))
+						this.applyGroupLogs(logs)
+					}
+				} catch (err) {
+					console.log('初始化跟团记录失败：', err)
+				}
+			},
 		// 查看是否黑名单
 		async initIsBackMember(){
 			
@@ -1257,6 +1269,55 @@ export default {
 	font-weight: 600;
 	line-height: 1.45;
 }
+.group-tag-row {
+	display: flex;
+	align-items: center;
+}
+
+/* 团购标签药丸：尺寸/切图与首页卡片完全一致（设计图 个人信息@2x.png 量得） */
+.group-label {
+	display: flex;
+	align-items: center;
+	height: 28rpx;
+	flex-shrink: 0;
+	margin-right: 12rpx;
+	padding-right: 16rpx;
+	box-sizing: border-box;
+	border: 2rpx solid #dddddd;
+	border-radius: 14rpx;
+	overflow: hidden;
+	background: #ffffff;
+}
+.label-badge {
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 24rpx;
+	height: 24rpx;
+	flex-shrink: 0;
+}
+.label-ring {
+	position: absolute;
+	left: 0;
+	top: 0;
+	width: 24rpx;
+	height: 24rpx;
+}
+.label-icon {
+	width: 24rpx;
+	height: 24rpx;
+}
+.group-label.tone-fast .label-icon {
+	width: 9rpx;
+	height: 15rpx;
+}
+.label-text {
+	margin-left: 15rpx;
+	font-size: 22rpx;
+	line-height: 1;
+}
+
 .self-pick-tag {
 	display: inline-flex;
 	padding: 6rpx 12rpx;
@@ -1435,24 +1496,28 @@ export default {
 	flex-direction: column !important;
 	margin-top: 22rpx;
 }
-.logs-section .group-logs-item {
-	display: grid;
-	grid-template-columns: 56rpx 52rpx minmax(0, 1fr) 44rpx;
-	align-items: center;
-	column-gap: 10rpx;
-	padding: 8rpx 0;
-	margin-bottom: 0 !important;
-}
-.log-code {
-	color: #999;
-	font-size: 22rpx;
-	line-height: 1;
-	white-space: nowrap;
-}
-.logs-section .group-logs-item-img {
-	width: 52rpx !important;
-	height: 52rpx !important;
-	border-radius: 4rpx !important;
+	.logs-section .group-logs-item {
+		display: flex !important;
+		align-items: center;
+		gap: 12rpx;
+		padding: 8rpx 0;
+		margin-bottom: 0 !important;
+	}
+	.log-code {
+		flex: 0 0 86rpx;
+		width: 86rpx;
+		color: #999;
+		font-size: 22rpx;
+		line-height: 52rpx;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.logs-section .group-logs-item-img {
+		flex: 0 0 52rpx;
+		width: 52rpx !important;
+		height: 52rpx !important;
+		border-radius: 4rpx !important;
 }
 .logs-section .group-logs-item-content {
 	min-width: 0;
@@ -1476,11 +1541,12 @@ export default {
 		text-overflow: ellipsis;
 		word-break: keep-all;
 	}
-}
-.log-num {
-	color: #22c55e;
-	font-size: 24rpx;
-	text-align: right;
+	}
+	.log-num {
+		flex: 0 0 44rpx;
+		color: #22c55e;
+		font-size: 24rpx;
+		text-align: right;
 	white-space: nowrap;
 }
 .more-logs {

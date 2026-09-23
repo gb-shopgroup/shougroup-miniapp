@@ -14,12 +14,16 @@
 					<text>{{ getImageStockText(item) }}</text>
 				</view>
 				<view class="product-info">
-					<view class="product-name">{{ item.name || '商品名称' }}</view>
+					<view class="product-name-row">
+						<text class="product-name">{{ item.name || '商品名称' }}</text>
+						<text v-if="goodsStatusText(item)" class="product-status">{{ goodsStatusText(item) }}</text>
+					</view>
 					<view class="product-meta">{{ getSpecText(item) }}</view>
 					<view class="product-meta">{{ getStockText(item) }}</view>
 					<view class="product-actions">
 						<button size="mini" @click="editProduct(item)">编辑</button>
-						<button size="mini" @click="deleteProduct(item)">删除</button>
+						<button v-if="isGoodsClosed(item)" size="mini" @click="restoreProduct(item)">恢复</button>
+						<button v-else size="mini" @click="deleteProduct(item)">删除</button>
 					</view>
 				</view>
 			</view>
@@ -39,7 +43,7 @@
 
 <script>
 import { closeLeaderGoodsInfo, getLeaderGoodsCount, getLeaderGoodsList } from "@/api/leader.js"
-import { buildPagedGoodsState, formatSpecSummary, formatStockSummary, normalizeLeaderGoods } from "@/utils/leaderProduct.js"
+import { buildPagedGoodsState, formatSpecSummary, formatStockSummary, getLeaderGoodsStatusText, isLeaderGoodsClosed, normalizeLeaderGoods } from "@/utils/leaderProduct.js"
 
 export default {
 	data() {
@@ -108,6 +112,13 @@ export default {
 		getImageStockText(item) {
 			return this.getStockText(item).replace('库存：', '库存')
 		},
+		isGoodsClosed(item = {}) {
+			return isLeaderGoodsClosed(item)
+		},
+		// 已下线的商品在名称后标「已下线」
+		goodsStatusText(item = {}) {
+			return getLeaderGoodsStatusText(item)
+		},
 		goBack() {
 			uni.navigateBack({
 				delta: 1,
@@ -134,20 +145,38 @@ export default {
 				}
 			})
 		},
+		// 删除 = 下线（接口是「启用/关闭」的切换语义）
 		deleteProduct(item) {
-			uni.showModal({
+			this.toggleGoodsClose(item, {
 				title: '确认删除',
-				content: '确定删除该商品吗？',
+				content: '确定删除该商品吗？删除后商品将标记为「已下线」，不再用于开团。',
+				successText: '删除成功',
+				failText: '删除失败'
+			})
+		},
+		// 已下线的商品要能恢复，否则再点「删除」会把它切换回上线（接口是切换语义）
+		restoreProduct(item) {
+			this.toggleGoodsClose(item, {
+				title: '确认恢复',
+				content: '确定恢复该商品吗？恢复后可在开团时重新选择。',
+				successText: '已恢复上线',
+				failText: '恢复失败'
+			})
+		},
+		toggleGoodsClose(item, copy = {}) {
+			uni.showModal({
+				title: copy.title || '确认操作',
+				content: copy.content || '',
 				success: async res => {
 					if (!res.confirm) return
 					try {
 						await closeLeaderGoodsInfo({ id: item.id })
-						uni.showToast({ title: '删除成功', icon: 'success' })
+						uni.showToast({ title: copy.successText || '操作成功', icon: 'success' })
 						this.refreshGoodsList()
 					} catch (err) {
-						const title = (err && (err.msg || err.message)) || err || '删除失败'
+						const title = (err && (err.msg || err.message)) || err || copy.failText || '操作失败'
 						uni.showToast({ title: String(title), icon: 'none' })
-						console.log('删除商品失败：', err)
+						console.log('商品上下线操作失败：', err)
 					}
 				}
 			})
@@ -263,6 +292,23 @@ export default {
 
 .product-info {
 	min-width: 0;
+}
+
+.product-name-row {
+	display: flex;
+	align-items: center;
+	gap: 12rpx;
+}
+
+/* 已下线标识：与团购列表的 muted 状态胶囊同一套配色 */
+.product-status {
+	flex-shrink: 0;
+	padding: 4rpx 14rpx;
+	border-radius: 20rpx;
+	color: #999;
+	background: #f4f4f4;
+	font-size: 22rpx;
+	line-height: 30rpx;
 }
 
 .product-name {

@@ -13,7 +13,7 @@
 					<view class="status" :class="orderInfo.statusTone">{{ pickupStatusText }}</view>
 				</view>
 				<view v-for="(goods, index) in orderInfo.goods" :key="goods.id" class="goods-row">
-					<view v-if="isVerifyMode" class="check-circle" :class="{ checked: Number(goods.verifyNum || 0) > 0, disabled: !canOperateVerify || Number(goods.pendingWriteOffNum || 0) <= 0 }" @click.stop="toggleGoods(index)"></view>
+					<view v-if="isVerifyMode" class="check-circle" :class="{ checked: Number(goods.verifyNum || 0) > 0, disabled: !canOperateVerify || !canWriteOffGoods(goods) }" @click.stop="toggleGoods(index)"></view>
 					<image :src="goods.img" class="goods-image" mode="aspectFill" />
 					<view class="goods-content">
 						<text class="goods-name">{{ goods.name }}</text>
@@ -25,7 +25,7 @@
 								<view class="quantity-control">
 									<text class="quantity-button" :class="{ disabled: !canOperateVerify || Number(goods.verifyNum || 0) <= 0 }" @click.stop="changeVerifyNum(index, -1)">−</text>
 									<text class="quantity-value">{{ goods.verifyNum }}</text>
-									<text class="quantity-button" :class="{ disabled: !canOperateVerify || Number(goods.verifyNum || 0) >= Number(goods.pendingWriteOffNum || 0) }" @click.stop="changeVerifyNum(index, 1)">+</text>
+									<text class="quantity-button" :class="{ disabled: !canOperateVerify || !canWriteOffGoods(goods) || Number(goods.verifyNum || 0) >= Number(goods.pendingWriteOffNum || 0) }" @click.stop="changeVerifyNum(index, 1)">+</text>
 								</view>
 							</view>
 							<text v-else class="goods-num">x{{ goods.num }}</text>
@@ -56,14 +56,16 @@
 				<view class="info-row address-row"><text class="label">驿站地址</text><text class="value address">{{ orderInfo.pointAddress || '---' }}</text></view>
 			</view>
 
-			<view v-if="isVerifyMode" class="section">
+			<view v-if="showVerifyRecords" class="section">
 				<view class="history-head" @click="historyExpanded = !historyExpanded">
 					<text class="section-title">核销记录</text>
 					<text class="history-toggle">{{ historyExpanded ? '收起' : '展开' }}</text>
 				</view>
 				<view v-if="historyExpanded">
-					<view v-for="(item, index) in visibleHistory" :key="index" class="history-row">{{ formatHistory(item) }}</view>
-					<view v-if="visibleHistory.length === 0" class="empty-history">暂无核销记录</view>
+					<view v-for="(item, index) in visibleHistory" :key="index" class="history-row">
+						<text v-for="(segment, i) in historySegments(item)" :key="i">{{ segment.text }}<text v-if="segment.qty" class="verify-qty">{{ segment.qty }}</text></text>
+					</view>
+					<view v-if="visibleHistory.length === 0" class="empty-history">{{ refreshingDetail ? '加载中...' : '暂无核销记录' }}</view>
 				</view>
 			</view>
 
@@ -84,7 +86,8 @@
 <script>
 import { getLeaderOrderInfo, partWriteOffLeaderOrder, writeOffLeaderOrder } from "@/api/leader.js"
 import { getCurrentLeaderPointId } from "@/utils/leaderConfig.js"
-import { buildPartWriteOffPayload, buildWriteOffPayload, normalizeLeaderOrder } from "@/utils/leaderOrder.js"
+import { buildLeaderOrderScanTarget, buildLeaderVerifyRecordSegments, buildPartWriteOffPayload, buildWriteOffPayload, canLeaderOrderShowVerifyRecords, canLeaderOrderVerify, canLeaderWriteOffGoods, normalizeLeaderOrder } from "@/utils/leaderOrder.js"
+import { pickActionErrorMessage, showActionError } from "@/utils/feedback.js"
 
 export default {
 	data() {
@@ -94,56 +97,119 @@ export default {
 			historyExpanded: false,
 			submitting: false,
 			refreshingDetail: false,
-			verifyDetailReady: false
+			verifyDetailReady: false,
+			// eventChannel 数据是否已送达，用于避免与 query 兜底重复拉取订单
+			channelDataReceived: false
 		}
 	},
 	computed: {
+		hasVerifiableGoods() {
+			// 与列表/扫码共用同一判断：除商品行还有待核销数量外，还要排除待支付/已退款/已取消
+			return canLeaderOrderVerify(this.orderInfo)
+		},
 		isVerifyMode() {
-			return this.mode === 'verify' && [1, 2].includes(Number(this.orderInfo.status || 0))
+			return this.mode === 'verify' && this.hasVerifiableGoods
+		},
+		// 核销记录区块的展示条件：只要该订单发生过核销（部分收货/已提货）就展示，
+		// 不再挂在 isVerifyMode 上——否则「查看订单」模式和「已提货（无待核销商品）」时
+		// 恰好是最需要看核销记录的场景，反而被隐藏。
+		showVerifyRecords() {
+			return canLeaderOrderShowVerifyRecords(this.orderInfo)
 		},
 		pageTitle() {
 			return this.isVerifyMode ? '商品核销' : '查看订单'
 		},
 		pickupStatusText() {
-			if (Number(this.orderInfo.status) === 1) return '待提货'
-			if (Number(this.orderInfo.status) === 2) return '部分提货'
-			if (Number(this.orderInfo.status) === 3) return '已提货'
 			return this.orderInfo.statusText
 		},
 		verifyGoodsCount() {
-			return this.orderInfo.goods.filter(item => Number(item.verifyNum || 0) > 0).length
+			return this.orderInfo.goods.filter(item => canLeaderWriteOffGoods(item) && Number(item.verifyNum || 0) > 0).length
 		},
 		canOperateVerify() {
 			return this.isVerifyMode && this.verifyDetailReady && !this.refreshingDetail
 		},
 		isAllChecked() {
-			const pendingGoods = this.orderInfo.goods.filter(item => Number(item.pendingWriteOffNum || 0) > 0)
+			const pendingGoods = this.orderInfo.goods.filter(item => canLeaderWriteOffGoods(item))
 			return pendingGoods.length > 0 && pendingGoods.every(item => Number(item.verifyNum || 0) === Number(item.pendingWriteOffNum || 0))
 		},
 		isFullWriteOff() {
-			return this.isAllChecked
+			const goods = this.orderInfo.goods || []
+			const pendingGoods = goods.filter(item => canLeaderWriteOffGoods(item))
+			return pendingGoods.length > 0 && pendingGoods.length === goods.length && this.isAllChecked
 		},
 		visibleHistory() {
+			// 「核销记录」优先用接口的 verifyRecords（仅订单详情接口下发）；history 仅作老数据兜底
+			const records = this.orderInfo.verifyRecords
+			if (Array.isArray(records) && records.length) return records
 			return Array.isArray(this.orderInfo.history) ? this.orderInfo.history : []
 		}
 	},
-	onLoad() {
+	onLoad(options = {}) {
+		// 扫码后可能以 navigateTo/redirectTo 携带 query 进入，此时没有 eventChannel，
+		// 需要能仅凭 orderNo 自行拉取订单，否则页面会空白。
+		// 微信小程序码的参数在 scene 里（形如 scene=orderNo=X），与直接 query 传参两种都要支持。
+		const params = Object.assign({}, options)
+		if (options.scene) {
+			try {
+				decodeURIComponent(options.scene).split('&').forEach(item => {
+					const pair = item.split('=')
+					if (pair[0]) params[pair[0]] = pair[1]
+				})
+			} catch (err) {
+				console.log('扫码参数解析失败：', err)
+			}
+		}
+		const fallbackOrderNo = params.orderNo || params.id || ''
+		const fallbackMode = params.mode === 'verify' ? 'verify' : 'view'
 		const channel = this.getOpenerEventChannel && this.getOpenerEventChannel()
 		if (channel && channel.on) {
 			channel.on('sendParams', data => {
+				this.channelDataReceived = true
 				this.mode = data && data._mode ? data._mode : 'view'
 				this.setOrderInfo(data || {})
-				if (this.mode === 'verify') this.refreshLatestOrderInfo()
+				// 列表接口不填充 verifyRecords，因此两种模式都要拉一次详情，
+				// 否则「查看订单」模式下核销记录永远显示「暂无核销记录」。
+				this.refreshLatestOrderInfo()
 			})
 		}
+		if (fallbackOrderNo) this.loadScannedOrderByNo(fallbackOrderNo, fallbackMode)
 	},
 	methods: {
 		goBack() {
 			uni.navigateBack({ delta: 1 })
 		},
 		setOrderInfo(data) {
-			this.orderInfo = normalizeLeaderOrder(data || {})
+			const next = normalizeLeaderOrder(data || {})
+			// 列表接口不填充 verifyRecords：渠道数据（列表行）晚于详情响应到达时，
+			// 不能把已取到的核销记录清空。
+			this.orderInfo = Object.assign({}, next, {
+				verifyRecords: next.verifyRecords.length ? next.verifyRecords : (this.orderInfo.verifyRecords || [])
+			})
 			if (this.mode === 'verify') this.resetVerifySelection()
+		},
+		// 扫码进入：eventChannel 未送达时按 orderNo 拉取订单，并根据是否还有可核销商品决定模式。
+		async loadScannedOrderByNo(orderNo, fallbackMode = 'view') {
+			if (!orderNo) return
+			if (this.channelDataReceived) return
+			this.mode = fallbackMode
+			this.refreshingDetail = true
+			try {
+				const res = await getLeaderOrderInfo({ orderNo })
+				if (this.channelDataReceived) return
+				const order = this.resolveOrderResponseData(res.data)
+				if (!order || !order.orderNo) {
+					uni.showToast({ title: '没有找到订单', icon: 'none' })
+					return
+				}
+				this.mode = buildLeaderOrderScanTarget(normalizeLeaderOrder(order)).mode
+				this.setOrderInfo(Object.assign({}, order, { _mode: this.mode }))
+			} catch (err) {
+				console.log('扫码加载订单详情失败：', err)
+				uni.showToast({ title: '订单查询失败', icon: 'none' })
+			} finally {
+				this.refreshingDetail = false
+				this.verifyDetailReady = true
+			}
 		},
 		resolveOrderResponseData(data) {
 			if (!Array.isArray(data)) return data || {}
@@ -170,10 +236,13 @@ export default {
 			const nextGoods = this.orderInfo.goods.map(item => Object.assign({}, item, { verifyNum: 0 }))
 			this.orderInfo = Object.assign({}, this.orderInfo, { goods: nextGoods })
 		},
+		canWriteOffGoods(goods = {}) {
+			return canLeaderWriteOffGoods(goods)
+		},
 		toggleGoods(index) {
 			if (!this.canOperateVerify) return
 			const goods = this.orderInfo.goods[index]
-			if (!goods || Number(goods.pendingWriteOffNum || 0) <= 0) return
+			if (!goods || !this.canWriteOffGoods(goods)) return
 			const checked = Number(goods.verifyNum || 0) > 0
 			const nextNum = checked ? 0 : Number(goods.pendingWriteOffNum || 0)
 			const nextGoods = this.orderInfo.goods.map((item, idx) => idx === index ? Object.assign({}, item, { verifyNum: nextNum }) : item)
@@ -183,7 +252,7 @@ export default {
 			if (!this.canOperateVerify) return
 			const checked = this.isAllChecked
 			const nextGoods = this.orderInfo.goods.map(item => {
-				const pendingNum = Number(item.pendingWriteOffNum || 0)
+				const pendingNum = this.canWriteOffGoods(item) ? Number(item.pendingWriteOffNum || 0) : 0
 				return Object.assign({}, item, { verifyNum: checked || pendingNum <= 0 ? 0 : pendingNum })
 			})
 			this.orderInfo = Object.assign({}, this.orderInfo, { goods: nextGoods })
@@ -191,7 +260,7 @@ export default {
 		changeVerifyNum(index, delta) {
 			if (!this.canOperateVerify) return
 			const goods = this.orderInfo.goods[index]
-			if (!goods) return
+			if (!goods || !this.canWriteOffGoods(goods)) return
 			const maxNum = Math.max(0, Number(goods.pendingWriteOffNum || 0))
 			const nextNum = Math.max(0, Math.min(Number(goods.verifyNum || 0) + delta, maxNum))
 			const nextGoods = this.orderInfo.goods.map((item, idx) => {
@@ -227,11 +296,12 @@ export default {
 			this.submitting = true
 			try {
 				const pointId = getCurrentLeaderPointId() || this.orderInfo.pointId || 0
-				await writeOffLeaderOrder(buildWriteOffPayload(this.orderInfo, pointId))
+				// silentToast：核销失败原因由本页 modal 展示
+				await writeOffLeaderOrder(buildWriteOffPayload(this.orderInfo, pointId), { silentToast: true })
 				uni.showToast({ title: '核销成功', icon: 'success' })
 				this.goBack()
 			} catch (err) {
-				uni.showToast({ title: String((err && (err.msg || err.message)) || '核销失败'), icon: 'none' })
+				showActionError(pickActionErrorMessage(err, '核销失败'), { title: '核销失败' })
 			} finally {
 				this.submitting = false
 			}
@@ -246,22 +316,18 @@ export default {
 			}
 			this.submitting = true
 			try {
-				await partWriteOffLeaderOrder(payload)
+				await partWriteOffLeaderOrder(payload, { silentToast: true })
 				uni.showToast({ title: '核销成功', icon: 'success' })
 				this.goBack()
 			} catch (err) {
-				uni.showToast({ title: String((err && (err.msg || err.message)) || '核销失败'), icon: 'none' })
+				showActionError(pickActionErrorMessage(err, '核销失败'), { title: '核销失败' })
 			} finally {
 				this.submitting = false
 			}
 		},
-		formatHistory(item) {
-			if (typeof item === 'string') return item
-			const time = item.time || item.addTime || item.createTime || ''
-			const staff = item.staffName || item.verifyName || item.operator || '核销人'
-			const goods = item.goodsName || item.goodsInfo || item.remark || ''
-			const num = item.num || item.receiptNum || item.verifyNum || ''
-			return [time, staff, goods ? `核销商品：${goods}` : '', num ? `+${num}` : ''].filter(Boolean).join(' ')
+		// 与核销列表页共用同一套分段逻辑：数量+单位单独一段，红色强调
+		historySegments(item) {
+			return buildLeaderVerifyRecordSegments(item)
 		}
 	}
 }
@@ -316,6 +382,7 @@ export default {
 .history-head { justify-content: space-between; }
 .history-toggle { color: #888; font-size: 24rpx; }
 .history-row { padding-top: 18rpx; font-size: 24rpx; line-height: 34rpx; color: #777; }
+.verify-qty { color: #ff3b22; }
 .empty-history { padding-top: 24rpx; text-align: center; color: #999; font-size: 24rpx; }
 .bottom-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; min-height: 112rpx; padding: 18rpx 24rpx; gap: 14rpx; background: #fff; box-shadow: 0 -2rpx 14rpx rgba(0, 0, 0, 0.08); box-sizing: border-box; }
 .action { flex: 1; min-width: 0; padding: 19rpx 10rpx; text-align: center; border-radius: 6rpx; font-size: 25rpx; white-space: nowrap; }

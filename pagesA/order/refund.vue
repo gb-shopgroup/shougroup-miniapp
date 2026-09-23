@@ -46,16 +46,16 @@
 </template>
 
 <script>
-import { approveLeaderRefundOrder, getLeaderRefundOrderList } from "@/api/leader.js"
+import { approveLeaderRefundOrder, getLeaderRefundApplyList } from "@/api/leader.js"
 import {
 	buildBatchRefundSummary,
-	buildLeaderRefundListRequest,
 	buildRefundApprovalPayload,
 	isLeaderRefundableGoods,
+	normalizeLeaderRefundApplyList,
 	REFUND_APPROVE_STATUS,
-	normalizeLeaderOrder,
 	toggleRefundSelection
 } from "@/utils/leaderOrder.js"
+import { pickActionErrorMessage, showActionError } from "@/utils/feedback.js"
 
 export default {
 	data() {
@@ -104,16 +104,16 @@ export default {
 			if (this.loading) return
 			this.loading = true
 			try {
-				const request = buildLeaderRefundListRequest({
+				// 新接口：POST /order/leader/refund/applyList，请求体只有 keyword/page/pageSize，
+				// 返回 { total, page, pageSize, list }，每条即一条退款申请记录。
+				const res = await getLeaderRefundApplyList({
 					keyword: this.keyword,
 					page: this.page,
-					pageSize: this.pageSize,
-					applyStatus: 1
+					pageSize: this.pageSize
 				})
-				const res = await getLeaderRefundOrderList(request)
-				const list = Array.isArray(res.data) ? res.data.map(item => normalizeLeaderOrder(item)) : []
+				const { list, total } = normalizeLeaderRefundApplyList(res.data)
 				this.orderList = this.page <= 1 ? list : this.orderList.concat(list)
-				this.hasMore = list.length >= this.pageSize
+				this.hasMore = this.orderList.length < total
 			} catch (err) {
 				if (this.page <= 1) this.orderList = []
 				uni.showToast({ title: String((err && (err.msg || err.message)) || '退款列表加载失败'), icon: 'none' })
@@ -170,7 +170,8 @@ export default {
 			if (this.submitting) return
 			this.submitting = true
 			try {
-				await approveLeaderRefundOrder(buildRefundApprovalPayload({ selection: this.selection, status: REFUND_APPROVE_STATUS.AGREE }))
+				// silentToast：退款失败原文由本页 modal 展示（金额相关，必须让团长看清）
+				await approveLeaderRefundOrder(buildRefundApprovalPayload({ selection: this.selection, status: REFUND_APPROVE_STATUS.AGREE }), { silentToast: true })
 				uni.showToast({ title: '退款成功', icon: 'success' })
 				this.confirmVisible = false
 				this.selection = {}
@@ -178,7 +179,7 @@ export default {
 				this.orderList = []
 				this.loadRefundOrders()
 			} catch (err) {
-				uni.showToast({ title: String((err && (err.msg || err.message)) || '退款失败'), icon: 'none' })
+				showActionError(pickActionErrorMessage(err, '退款失败'), { title: '退款失败' })
 			} finally {
 				this.submitting = false
 			}

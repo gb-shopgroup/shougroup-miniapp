@@ -2,10 +2,10 @@
 <view class="container order-page" :style="orderPageStyle">
 	<view class="order-nav" :style="miniNavBarStyle()">
 		<text class="nav-placeholder"></text>
-		<text class="title" :style="miniNavTitleStyle()">{{ paidMode ? '待核销订单' : '团购订单' }}</text>
+		<text class="title" :style="miniNavTitleStyle()">团购订单</text>
 		<text class="nav-placeholder"></text>
 	</view>
-	<view class="order-filter" :class="{ 'has-sub-tabs': currentTab === 'refund' }" :style="miniNavTopStyle()" v-if="!paidMode">
+	<view class="order-filter" :class="{ 'has-sub-tabs': currentTab === 'refund' }" :style="miniNavTopStyle()">
 		<view class="order-search" :class="{ active: searchFocused || goodsName }">
 			<view class="search-placeholder" v-if="!searchFocused && !goodsName">
 				<view class="search-icon"></view>
@@ -34,7 +34,7 @@
 			<view class="order-card" v-for="order in orderList" :key="order.orderNo" @click="goOrderDetail(order)">
 				<view class="order-title-row">
 					<view>跟团号：<text class="group-no">{{ order.orderNo }}</text></view>
-					<view class="order-status-pill" :class="orderStatusTone(order)">{{ paidMode ? '待核销' : orderStatusText(order) }}</view>
+					<view class="order-status-pill" :class="orderStatusTone(order)">{{ orderStatusText(order) }}</view>
 				</view>
 				<view class="order-time">{{ order.orderTime }}</view>
 				<view class="leader-order-row">
@@ -72,15 +72,15 @@
 					<view></view>
 					<view class="order-actions">
 						<text class="action-btn refund" v-if="canRefund(order)" @click.stop="goRefundApply(order)">申请退款</text>
+						<text class="action-btn aftersale" v-if="currentTab !== 'refund' && hasAfterSalesDetail(order)" @click.stop="goRefundDetail(order)">查看售后</text>
 						<text class="action-btn confirm2" v-if="canPayOrder(order)" @click.stop="payOrder(order)">支付订单</text>
 						<text class="action-btn confirm3" v-else-if="isOrderPayExpired(order)">支付已超时</text>
-						<text class="action-btn confirm" v-if="canReceipt(order)" @click.stop="confirmReceipt(order)">确认核销</text>
-					</view>
+											</view>
 				</view>
 			</view>
 		</view>
 		<view class="empty-state" v-if="!loading && orderList.length === 0">暂无订单</view>
-		<view class="load-more" v-if="hasMore && !paidMode">上拉加载更多...</view>
+		<view class="load-more" v-if="hasMore">上拉加载更多...</view>
 		<view class="no-more" v-else-if="orderList.length > 0">没有更多了</view>
 	</view>
 </view>
@@ -88,8 +88,8 @@
 
 <script>
 import { getPayCache, removePayCache, savePayCache } from "@/utils/payCache.js"
-import { getApplyRefundOrderList, getOpenId, getOrderList, getPaidOrders, payOrder as requestPayOrder, receiptOrder } from "@/api/group.js"
-import { MEMBER_ORDER_TABS, MEMBER_REFUND_TABS, buildMemberOrderListPayload, buildMemberRefundListPayload, buildMemberReceiptParams, normalizeMemberOrder } from "@/utils/memberOrder.js"
+import { getApplyRefundOrderList, getOpenId, getOrderList, payOrder as requestPayOrder } from "@/api/group.js"
+import { MEMBER_ORDER_TABS, MEMBER_REFUND_TABS, buildMemberOrderListPayload, buildMemberRefundListPayload, canMemberOrderApplyRefund, normalizeMemberOrder } from "@/utils/memberOrder.js"
 import { clearPaidCheckoutSessionState } from "@/utils/groupPurchase.js"
 
 export default {
@@ -101,8 +101,6 @@ export default {
 			currentRefundTab: 'pending',
 			goodsName: '',
 			searchFocused: false,
-			shopId: 0,
-			paidMode: false,
 			orderList: [],
 			page: 1,
 			pageSize: 10,
@@ -121,7 +119,6 @@ export default {
 			uni.redirectTo({ url: '/pages/login/index'})
 			return
 		}
-		this.applyEntryParams(options)
 		this.refreshOrders()
 	},
 	onPullDownRefresh() {
@@ -134,13 +131,13 @@ export default {
 		if (this.countdownTimer) clearInterval(this.countdownTimer)
 	},
 	onReachBottom() {
-		if (this.paidMode || this.loading || !this.hasMore) return
+		if (this.loading || !this.hasMore) return
 		this.page += 1
 		this.loadData()
 	},
 	computed: {
 		orderPageStyle() {
-			return this.miniNavPageStyle(this.paidMode ? 0 : (this.currentTab === 'refund' ? 200 : 136))
+			return this.miniNavPageStyle(this.currentTab === 'refund' ? 200 : 136)
 		}
 	},
 	methods: {
@@ -149,17 +146,6 @@ export default {
 			this.countdownTimer = setInterval(() => {
 				this.nowTick = Date.now()
 			}, 1000)
-		},
-		applyEntryParams(options) {
-			const params = Object.assign({}, options)
-			if (options.scene) {
-				decodeURIComponent(options.scene).split('&').forEach(item => {
-					const pair = item.split('=')
-					if (pair[0]) params[pair[0]] = pair[1]
-				})
-			}
-			this.shopId = Number(params.shopId || params.sid || 0)
-			this.paidMode = Boolean(this.shopId)
 		},
 		async refreshOrders(callback) {
 			this.page = 1
@@ -178,11 +164,7 @@ export default {
 			this.loading = true
 			try {
 				let list = []
-				if (this.paidMode) {
-					const res = await getPaidOrders({ shopId: this.shopId })
-					list = Array.isArray(res.data) ? res.data : []
-					this.hasMore = false
-				} else if (this.currentTab === 'refund') {
+				if (this.currentTab === 'refund') {
 					const payload = buildMemberRefundListPayload({
 						goodsName: this.goodsName,
 						tab: this.currentRefundTab,
@@ -235,7 +217,7 @@ export default {
 			this.refreshOrders()
 		},
 		goOrderDetail(order) {
-			if (this.currentTab === 'refund' || order.statusKey === 'refund') {
+			if (this.currentTab === 'refund') {
 				this.goRefundDetail(order)
 				return
 			}
@@ -259,14 +241,24 @@ export default {
 				fail: () => { uni.redirectTo({ url }) }
 			})
 		},
-		canRefund(order) {
-			return !this.paidMode && [1, 2, 3].includes(Number(order.status)) && order.goods.some(goods => goods.applyRefund === 0)
+		hasAfterSalesDetail(order = {}) {
+			if ([4, 5].includes(Number(order.status))) return true
+			if (order.statusKey === 'refund' || order.statusKey === 'refunded') return true
+			if (order.refundStatusText && order.refundStatusText !== '无售后' && order.refundStatusText !== '售后') return true
+			return (order.goods || []).some(goods =>
+				Number(goods.applyRefund || 0) > 0 ||
+				Number(goods.refundNum || 0) > 0 ||
+				Number(goods.refundGoodsNum || 0) > 0
+			)
 		},
-		canReceipt(order) {
-			return this.paidMode && [1, 2].includes(Number(order.status)) && Number(order.pointId || 0) > 0
+		canRefund(order) {
+			return canMemberOrderApplyRefund(order)
 		},
 		hasOrderActions(order) {
-			return this.canRefund(order) || this.canPayOrder(order) || this.isOrderPayExpired(order) || this.canReceipt(order)
+			return this.canRefund(order) ||
+				(this.currentTab !== 'refund' && this.hasAfterSalesDetail(order)) ||
+				this.canPayOrder(order) ||
+				this.isOrderPayExpired(order)
 		},
 		parseOrderTime(value) {
 			if (!value) return 0
@@ -295,30 +287,6 @@ export default {
 				return order.refundTone
 			}
 			return this.isOrderPayExpired(order) ? 'muted' : order.statusTone
-		},
-		confirmReceipt(order) {
-			if (this.isRequesting) return
-			uni.showModal({
-				title: '确认核销',
-				content: '确认核销该订单商品？',
-				success: async res => {
-					if (!res.confirm) return
-					await this.submitReceipt(order)
-				}
-			})
-		},
-		async submitReceipt(order) {
-			this.isRequesting = true
-			try {
-				await receiptOrder(buildMemberReceiptParams(order))
-				uni.showToast({ title: '核销成功', icon: 'success' })
-				this.refreshOrders()
-			} catch (err) {
-				console.log('确认核销失败：', err)
-				uni.showToast({ title: '核销失败', icon: 'none' })
-			} finally {
-				this.isRequesting = false
-			}
 		},
 		async payOrder(order) {
 			if (this.isRequesting) return
@@ -820,6 +788,11 @@ export default {
 .action-btn.refund {
 	color: #ff4d4f;
 	border-color: #ff4d4f;
+}
+
+.action-btn.aftersale {
+	color: #16a34a;
+	border-color: #16a34a;
 }
 
 .empty-state,

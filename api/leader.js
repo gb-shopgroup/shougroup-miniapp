@@ -75,14 +75,21 @@ function withLeaderOrderPoint(params = {}) {
 	return data
 }
 
+// /order/leader/home/show/orders 的 groupId 为必填（<=0 表示不过滤），必须原样下发。
 function withLeaderHomeShowParams(params = {}) {
 	const pointId = Number(params.pointId || params.pid || 0)
-	return { pointId, pid: pointId }
+	return {
+		groupId: Number(params.groupId || params.gid || 0),
+		pointId,
+		pid: pointId
+	}
 }
 
+// /order/leader/home/order/goodsSummary 的 groupId 同样必填（<=0 表示不过滤）。
 function withLeaderGoodsSummaryParams(params = {}) {
 	const pointId = Number(params.pointId || params.pid || 0)
 	const data = {
+		groupId: Number(params.groupId || params.gid || 0),
 		pointId,
 		pid: pointId,
 		keyword: params.keyword || '',
@@ -525,6 +532,14 @@ export function addLeaderGroupInfo(data) {
 	})
 }
 
+// 查询团长团购活动标签列表（后台可维护：tagId / tagName / tagColor）
+export function getLeaderGroupActivityTagList(options = {}) {
+	return request2(Object.assign({
+		url: '/goods/Leader/groupActivity/tag/list',
+		method: 'GET'
+	}, options))
+}
+
 // 查询团购接口
 export function getLeaderGroupInfo(params) {
 	return request2({
@@ -587,6 +602,17 @@ export function getLeaderRefundOrderList(data) {
 	})
 }
 
+// 团长端-退款申请列表（批量退款工作台用）
+// 返回 LeaderRefundApplyListResponse { total, page, pageSize, list }，每条是一条退款申请记录，
+// 字段口径与审核 /order/leader/refund/approve 的 refundOrderGoodsMap 对齐。
+export function getLeaderRefundApplyList(data) {
+	return request2({
+		url: '/order/leader/refund/applyList',
+		method: 'POST',
+		data
+	})
+}
+
 // 团长端-我的团员列表
 export function getLeaderMemberList(data = {}) {
 	return request2({
@@ -637,21 +663,21 @@ export function getLeaderOrderInfo(params) {
 	})
 }
 
-export function writeOffLeaderOrder(params) {
+export function writeOffLeaderOrder(params, options = {}) {
 	const data = withLeaderOrderPoint(params)
-	return request2({
+	return request2(Object.assign({
 		url: queryUrl('/order/leader/order/writeOff', data),
 		method: 'POST',
 		data: {}
-	})
+	}, options))
 }
 
-export function partWriteOffLeaderOrder(data) {
-	return request2({
+export function partWriteOffLeaderOrder(data, options = {}) {
+	return request2(Object.assign({
 		url: '/order/leader/order/partWriteOff',
 		method: 'POST',
 		data
-	})
+	}, options))
 }
 
 export function sendLeaderOrderInfo(params) {
@@ -670,12 +696,13 @@ export function getLeaderRefundOrderCount(params) {
 	})
 }
 
-export function approveLeaderRefundOrder(data) {
-	return request2({
+// options 可透传请求层选项（如 { silentToast: true }：退款失败原文由页面用 modal 展示）
+export function approveLeaderRefundOrder(data, options = {}) {
+	return request2(Object.assign({
 		url: '/order/leader/refund/approve',
 		method: 'POST',
 		data
-	})
+	}, options))
 }
 
 export const getLeaderOrderInfo2 = getLeaderOrderInfo

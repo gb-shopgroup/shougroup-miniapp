@@ -30,6 +30,7 @@
 				<image class="goods-image" :src="goods.img || '/static/image/head.png'" mode="aspectFill"></image>
 				<view class="goods-content">
 					<text class="goods-name">{{ goods.name || '商品名称' }}</text>
+					<text v-if="goods.specText" class="goods-spec">{{ goods.specText }}</text>
 					<view class="goods-status-list">
 						<text class="goods-meta">共{{ goods.num }}{{ goods.unit || '件' }}</text>
 						<text v-for="status in goods.statusList" :key="status.key" class="goods-status" :class="status.tone">{{ status.text }}</text>
@@ -64,7 +65,7 @@
 				<text class="label">退款明细：</text>
 				<view class="refund-goods-list">
 				<view v-for="goods in refundGoods" :key="goods.id" class="refund-goods-row">
-					<text>{{ goods.name || '商品名称' }}</text>
+					<text>{{ goods.name || '商品名称' }}{{ goods.specText ? '（' + goods.specText + '）' : '' }}</text>
 					<text>退款 {{ goodsRefundNum(goods) }}{{ goods.unit || '件' }}，￥{{ goodsRefundAmountText(goods) }}</text>
 					</view>
 				</view>
@@ -240,12 +241,7 @@ export default {
 					const detail = normalizeMemberOrder(Object.assign({}, order, data, {
 						goods: Array.isArray(data.goods) && data.goods.length ? data.goods : order.goods
 					}))
-					mergedOrder = Object.assign({}, detail, {
-						history: records.length ? mergeMemberOrderRefundRecords(order, records).history : order.history,
-						reason: detail.reason || order.reason,
-						refundDesc: detail.refundDesc || order.refundDesc,
-						applyTime: detail.applyTime || order.applyTime
-					})
+					mergedOrder = records.length ? mergeMemberOrderRefundRecords(detail, records) : detail
 				}
 				return mergedOrder
 			} catch (err) {
@@ -297,7 +293,7 @@ export default {
 .order-overview, .section { margin-bottom: 16rpx; padding: 24rpx 28rpx; background: #fff; box-sizing: border-box; }
 .order-head, .shop-row, .goods-row, .order-total-row { display: flex; align-items: center; }
 .order-head, .order-total-row { justify-content: space-between; }
-.order-no, .order-time, .shop-name, .group-name, .goods-name, .goods-price, .goods-num, .goods-meta, .goods-status, .refund-fee { display: block; }
+.order-no, .order-time, .shop-name, .group-name, .goods-name, .goods-spec, .goods-price, .goods-num, .goods-meta, .goods-status, .refund-fee { display: block; }
 .order-no { color: #333; font-size: 30rpx; line-height: 42rpx; }
 .order-time { margin-top: 5rpx; color: #999; font-size: 22rpx; line-height: 32rpx; }
 .refund-tag { padding: 6rpx 15rpx; border-radius: 22rpx; color: #f05b40; background: #fff2ef; font-size: 22rpx; line-height: 30rpx; }
@@ -312,6 +308,7 @@ export default {
 .goods-image { width: 110rpx; height: 110rpx; margin-right: 18rpx; background: #f2f2f2; border-radius: 4rpx; flex-shrink: 0; }
 .goods-content { flex: 1; min-width: 0; }
 .goods-name { overflow: hidden; color: #333; font-size: 27rpx; line-height: 38rpx; text-overflow: ellipsis; white-space: nowrap; }
+.goods-spec { margin-top: 6rpx; color: #999; font-size: 22rpx; line-height: 31rpx; }
 .goods-status-list { display: flex; flex-wrap: wrap; gap: 8rpx; margin-top: 9rpx; }
 .goods-meta, .goods-status { color: #888; font-size: 22rpx; line-height: 31rpx; }
 .goods-status.pending, .goods-status.processing { color: #b26a00; }

@@ -97,6 +97,10 @@
 				<text>下单人：</text>
 				<text>{{ displayOrder.trueName || displayOrder.nickname }}</text>
 			</view>
+			<view class="info-row" v-if="displayOrder.remark">
+				<text>备注：</text>
+				<text>{{ displayOrder.remark }}</text>
+			</view>
 			<view class="info-row">
 				<text>订单编号：</text>
 				<view class="info-value">
@@ -163,7 +167,7 @@
 <script>
 import { getPayCache, removePayCache, savePayCache } from "@/utils/payCache.js"
 import { getErcodeInfo, getGroupPoint, getOpenId, getOrderInfo, getRefundRecords, payOrder as requestPayOrder } from "@/api/group.js"
-import { buildMemberErcodeParams, mergeMemberOrderRefundRecords, normalizeMemberOrder } from "@/utils/memberOrder.js"
+import { buildMemberErcodeParams, canMemberOrderApplyRefund, canMemberOrderMakeQr, mergeMemberOrderRefundRecords, normalizeMemberOrder } from "@/utils/memberOrder.js"
 import { clearPaidCheckoutSessionState, normalizeGroupPickupPoint } from "@/utils/groupPurchase.js"
 
 export default {
@@ -186,21 +190,13 @@ export default {
 			return this.loaded && Boolean(this.orderInfo.orderNo)
 		},
 		displayOrder() {
-			if (this.paidSuccessHint && Number(this.orderInfo.status) === 0) {
-				return Object.assign({}, this.orderInfo, {
-					status: 1,
-					statusKey: 'unreceipt',
-					statusText: '支付成功',
-					statusTone: 'success'
-				})
-			}
 			return this.orderInfo
 		},
 		canMakeQr() {
-			return [1, 2].includes(Number(this.displayOrder.status))
+			return canMemberOrderMakeQr(this.displayOrder)
 		},
 		canRefund() {
-			return [1, 2, 3].includes(Number(this.displayOrder.status)) && this.displayOrder.goods.some(goods => goods.applyRefund === 0)
+			return canMemberOrderApplyRefund(this.displayOrder)
 		},
 		hasRefundInfo() {
 			return [4, 5].includes(Number(this.orderInfo.status)) ||
@@ -215,11 +211,11 @@ export default {
 			if (this.isPayExpired) return '支付已超时'
 			const titleMap = {
 				0: '待支付',
-				1: '已支付，待提货',
-				2: '部分提货',
+				1: '待收货',
+				2: '部分收货',
 				3: '已提货',
 				4: '已退款',
-				5: '售后处理中',
+				5: '售后',
 				6: '已取消'
 			}
 			return titleMap[Number(this.displayOrder.status)] || this.displayOrder.statusText
@@ -274,14 +270,10 @@ export default {
 					disabled: this.isPayExpired
 				}]
 			}
-			if ([1, 2, 3].includes(status)) {
-				const actions = []
-				if (this.canRefund) actions.push({ key: 'refund', text: '申请退款', tone: 'danger' })
-				return actions
-			}
-			if ([4, 5].includes(status)) {
-				return [{ key: 'refundDetail', text: '查看售后', tone: status === 5 ? 'primary' : 'light' }]
-			}
+			const actions = []
+			if (this.canRefund) actions.push({ key: 'refund', text: '申请退款', tone: 'danger' })
+			if (this.hasRefundInfo) actions.push({ key: 'refundDetail', text: '查看售后', tone: status === 5 ? 'primary' : 'light' })
+			if (actions.length) return actions
 			const readonlyMap = {
 				6: { text: '订单已取消', tone: 'muted' }
 			}

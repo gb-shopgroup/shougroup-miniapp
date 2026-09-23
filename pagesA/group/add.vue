@@ -2,22 +2,23 @@
 <view class="container" :style="miniNavPageStyle()">
 	<view class="leader-nav" :style="miniNavBarStyle()">
 		<text class="nav-back" :style="miniNavTitleStyle()" @click="goBack">‹</text>
-		<text class="nav-title" :style="miniNavTitleStyle()">开团</text>
+		<text class="nav-title" :style="miniNavTitleStyle()">{{ isAdd ? '开团' : '修改团购' }}</text>
 		<view class="nav-placeholder"></view>
 	</view>
 	
 	<scroll-view class="group-form" :style="groupFormStyle" scroll-y>
 		<view class="section name-section">
 			<view class="name-label-row">
-				<text class="label required">团购名称</text>
-				<text class="hint">（建议不超过80字）</text>
+				<text class="label" :class="{ required: isAdd }">团购名称</text>
+				<text class="hint" v-if="isAdd">（建议不超过80字）</text>
 			</view>
-			<input class="name-input" type="text" v-model="formData.name" maxlength="80" placeholder="请输入团购名称" />
+			<input v-if="isAdd" class="name-input" type="text" v-model="formData.name" maxlength="80" placeholder="请输入团购名称" />
+			<text v-else class="name-text">{{ formData.name || '—' }}</text>
 		</view>
 		
 		<view class="section intro-section">
 			<text class="section-heading">团购介绍</text>
-			<view class="intro-tools">
+			<view class="intro-tools" v-if="isAdd">
 				<view class="intro-tool" @click="insertImage"><text class="tool-icon image-icon"></text><text>图片</text></view>
 				<view
 					v-for="layout in imageLayouts"
@@ -37,6 +38,7 @@
 				<editor
 					id="groupIntroEditor"
 					class="intro-editor"
+					:read-only="!isAdd"
 					placeholder="请输入团购介绍，可添加图片和排版"
 					show-img-size
 					show-img-toolbar
@@ -67,7 +69,7 @@
 						<text class="goods-price">¥{{ item.price }}</text>
 					</view>
 				</view>
-				<view class="goods-actions">
+				<view class="goods-actions" v-if="isAdd">
 					<button class="goods-action-btn" size="mini" @click="editGroupGoods(item)">修改</button>
 					<button class="goods-action-btn" size="mini" @click="removeGoods(index)">删除</button>
 				</view>
@@ -77,44 +79,42 @@
 		
 		<view class="section settings-section">
 			<text class="section-heading">团购设置</text>
-			<picker :range="categoryList" range-key="name" @change="onCategoryChange">
+			<picker v-if="isAdd" :range="categoryList" range-key="name" @change="onCategoryChange">
 				<view class="setting-row">
 					<text>团购分类</text>
 					<text class="setting-value">{{ categoryName || '请选择分类' }} ›</text>
 				</view>
 			</picker>
+			<view class="setting-row" v-else>
+				<text>团购分类</text>
+				<text class="setting-value">{{ categoryName || '—' }}</text>
+			</view>
 			<view class="setting-row">
 				<text>物流方式</text>
 				<text class="setting-value">顾客自提 ›</text>
 			</view>
-			<picker :range="pointList" range-key="name" @change="onPointChange">
-				<view class="setting-row">
-					<text>自提点</text>
-					<text class="setting-value">{{ pointName || '请选择自提点' }} ›</text>
-				</view>
-			</picker>
-			<view class="setting-row" @click="openLabelPanel">
+			<view class="setting-row" :class="{ 'row-readonly': !isAdd }" @click="openLabelPanel">
 				<text>显示标签</text>
 				<view class="setting-value-wrap">
 					<text class="setting-value">{{ labelText }}</text>
-					<text class="setting-arrow">›</text>
+					<text class="setting-arrow" v-if="isAdd">›</text>
 				</view>
 			</view>
-			<view class="setting-row time-row" @click="openTimePanel">
+			<view class="setting-row time-row" :class="{ 'row-readonly': !isAdd }" @click="openTimePanel">
 				<text>团购时间</text>
 				<view class="setting-value-wrap">
 					<view class="time-value">
-						<text>开始 {{ startTimeText || '请选择' }}</text>
-						<text>结束 {{ endTimeText || '请选择' }}</text>
+						<text>开始 {{ startTimeText || (isAdd ? '请选择' : '—') }}</text>
+						<text>结束 {{ endTimeText || (isAdd ? '请选择' : '—') }}</text>
 					</view>
-					<text class="setting-arrow">›</text>
+					<text class="setting-arrow" v-if="isAdd">›</text>
 				</view>
 			</view>
 		</view>
 	</scroll-view>
 	
 	<view class="bottom-action">
-		<button @click="submitForm">开团</button>
+		<button @click="submitForm">{{ isAdd ? '开团' : '保存' }}</button>
 	</view>
 	<view class="sheet-mask" v-if="labelPanelVisible" @click="closeLabelPanel">
 		<view class="bottom-sheet label-sheet" @click.stop>
@@ -123,11 +123,12 @@
 				<text class="sheet-title">请选择团购标签</text>
 				<text class="sheet-confirm" @click="confirmLabelPanel">确定</text>
 			</view>
-			<picker-view class="label-picker" :value="labelPickerValue" indicator-class="label-picker-indicator" @change="onLabelPickerChange">
+			<picker-view class="label-picker" :value="labelPickerValue" indicator-class="label-picker-indicator" @change="onLabelPickerChange" v-if="tagOptions.length > 0">
 				<picker-view-column>
-					<view class="label-picker-item" v-for="item in labelOptions" :key="item">{{ item }}</view>
+					<view class="label-picker-item" v-for="item in tagOptions" :key="item.id || item.name">{{ item.name }}</view>
 				</picker-view-column>
 			</picker-view>
+			<view class="label-empty" v-else>暂无可用标签</view>
 			<view class="label-cancel" @click="closeLabelPanel">取消</view>
 			<view class="sheet-safe-area"></view>
 		</view>
@@ -165,9 +166,8 @@
 
 <script>
 import { uploadGroupIntroImage } from "@/api/upload.js"
-import { getLeaderGroupCat, getLeaderOnlineGoodsList, addLeaderGroupInfo, getLeaderGroupInfo, editLeaderGroupInfo, getLeaderPointList  } from "@/api/leader.js"
+import { getLeaderGroupActivityTagList, getLeaderGroupCat, getLeaderOnlineGoodsList, addLeaderGroupInfo, getLeaderGroupInfo, editLeaderGroupInfo } from "@/api/leader.js"
 import { buildGroupGoodsReference } from "@/utils/leaderProduct.js"
-import { normalizeLeaderPoint } from "@/utils/leaderConfig.js"
 import {
 	buildLeaderGroupCopyDraft,
 	buildLeaderGroupSubmitPayload,
@@ -175,6 +175,7 @@ import {
 	formatGroupTimeRange,
 	normalizeRichTextImages,
 	normalizeLeaderGroup,
+	normalizeLeaderGroupTagList,
 	validateGroupTime
 } from "@/utils/leaderGroup.js"
 export default {
@@ -190,12 +191,13 @@ export default {
 				name: '',
 				// 商品提货方式,1自提2邮递
 				pickup: 1,
-				// 团购绑定自提点
+				// 团购绑定自提点：开团/修改团不再选择，编辑态原样回传、新增态为 0
 				pointId: 0,
-				pointName: '',
 				// 团购介绍
 				info: '',
-				// C端团购详情标签
+				// C端团购详情标签（后台标签实体：tagId=0 未选择；tagName/label 仅用于展示）
+				tagId: 0,
+				tagName: '',
 				label: '',
 				virtual: 0,
 				// 活动开始/结束时间，统一秒级时间戳
@@ -206,12 +208,11 @@ export default {
 			},
 			categoryName: '',
 			categoryList: [],
-			pointName: '',
-			pointList: [],
 			goodsList: [],
 			goodsIds: [],
 			labelPanelVisible: false,
-			labelOptions: ['超快回复', '超多回头客', '热门团购'],
+			// 团购标签改为后台可维护的实体，进页面时从接口拉取（tagId/tagName/tagColor）
+			tagOptions: [],
 			labelPickerValue: [0],
 			labelDraft: '',
 			timePanelVisible: false,
@@ -250,7 +251,7 @@ export default {
 		
 		// 初始化团购分类和商品列表
 		this.initGroupCatList()
-		this.initPointList()
+		this.initTagOptions()
 		this.initGoodsList()
 		
 		// 初始化富文本编辑器字体文件
@@ -279,7 +280,7 @@ export default {
 			return formatGroupTimeRange(this.formData.startTime, this.formData.endTime)
 		},
 		labelText(){
-			return this.formData.label || '请选择标签'
+			return this.formData.tagName || this.formData.label || (this.formData.tagId ? '已选择标签' : '请选择标签')
 		},
 		minDateText(){
 			return this.formatPickerDate(new Date())
@@ -307,8 +308,8 @@ export default {
 				}
 				this.resetTimeDraft()
 				this.syncCategoryName()
-				this.syncPointName()
 				this.syncSelectedGoodsStock()
+				this.syncTagPickerIndex()
 				this.setEditorContent()
 			} catch (err) {
 				console.log('初始化团购信息失败：', err)
@@ -323,20 +324,6 @@ export default {
 				this.syncCategoryName()
 			} catch (err) {
 				console.log('初始化团购分类失败：', err)
-			}
-		},
-		// 初始化自提点列表
-		async initPointList(){
-			
-			try {
-				const res = await getLeaderPointList()
-				this.pointList = (Array.isArray(res.data) ? res.data : [])
-					.map(normalizeLeaderPoint)
-					.filter(item => item.isClose === 0)
-				this.syncPointName()
-			} catch (err) {
-				console.log('初始化自提点列表失败：', err)
-				uni.showToast({ title: '自提点加载失败', icon: 'none' })
 			}
 		},
 		// 初始化商品列表
@@ -369,14 +356,6 @@ export default {
 			if (!category) return
 			this.formData.cat = category.id
 			this.categoryName = category.name
-		},
-		onPointChange(e){
-			
-			const point = this.pointList[e.detail.value]
-			if (!point) return
-			this.formData.pointId = point.id
-			this.formData.pointName = point.name
-			this.pointName = point.name
 		},
 		formatPickerDate(date){
 			const year = date.getFullYear()
@@ -413,10 +392,32 @@ export default {
 			if(parts.length !== 3) return 0
 			return Math.floor(new Date(parts[0], parts[1] - 1, parts[2], clockParts[0] || 0, clockParts[1] || 0, 0, 0).getTime() / 1000)
 		},
+		// 拉取后台标签列表（后台可增删改，前端不再写死三个标签）
+		async initTagOptions(){
+			try {
+				const res = await getLeaderGroupActivityTagList()
+				this.tagOptions = normalizeLeaderGroupTagList(res.data)
+				this.syncTagPickerIndex()
+			} catch (err) {
+				console.log('获取团购标签列表失败：', err)
+				this.tagOptions = []
+			}
+		},
+		// 让选择器停在当前标签上（编辑态回填 tagId 后也要同步一次）
+		syncTagPickerIndex(){
+			const index = this.tagOptions.findIndex(item => Number(item.id) === Number(this.formData.tagId || 0))
+			if (index >= 0) this.labelPickerValue = [index]
+		},
 		openLabelPanel(){
-			const index = Math.max(0, this.labelOptions.indexOf(this.formData.label))
+			// 编辑态只允许添加商品，标签只读展示
+			if (!this.isAdd) return
+			if (this.tagOptions.length === 0) {
+				uni.showToast({ title: '暂无可用标签', icon: 'none' })
+				return
+			}
+			const index = Math.max(0, this.tagOptions.findIndex(item => Number(item.id) === Number(this.formData.tagId || 0)))
 			this.labelPickerValue = [index]
-			this.labelDraft = this.labelOptions[index] || ''
+			this.labelDraft = this.tagOptions[index] ? this.tagOptions[index].name : ''
 			this.labelPanelVisible = true
 		},
 		closeLabelPanel(){
@@ -425,13 +426,19 @@ export default {
 		onLabelPickerChange(e){
 			const index = (e.detail.value && e.detail.value[0]) || 0
 			this.labelPickerValue = [index]
-			this.labelDraft = this.labelOptions[index] || ''
+			this.labelDraft = this.tagOptions[index] ? this.tagOptions[index].name : ''
 		},
 		confirmLabelPanel(){
-			this.formData.label = this.labelDraft || this.labelOptions[this.labelPickerValue[0]] || ''
+			// 提交用 tagId（GroupActRequest 字段）；tagName/label 仅用于页面展示
+			const picked = this.tagOptions[this.labelPickerValue[0]] || this.tagOptions[0] || null
+			this.formData.tagId = picked ? Number(picked.id || 0) : 0
+			this.formData.tagName = picked ? picked.name : ''
+			this.formData.label = this.formData.tagName
 			this.closeLabelPanel()
 		},
 		openTimePanel(){
+			// 编辑态时间只读展示
+			if (!this.isAdd) return
 			this.resetTimeDraft()
 			this.timePanelVisible = true
 		},
@@ -465,12 +472,6 @@ export default {
 			
 			const category = this.categoryList.find(item => item.id == this.formData.cat)
 			this.categoryName = category ? category.name : ''
-		},
-		// 同步编辑态自提点名称
-		syncPointName(){
-			
-			const point = this.pointList.find(item => String(item.id) === String(this.formData.pointId || 0))
-			this.pointName = point ? point.name : (this.formData.pointName || '')
 		},
 		// 选择并添加商品
 		onGoodsChange(e){
@@ -562,16 +563,22 @@ export default {
 		// 提交保存团购
 		submitForm() {
 			
+			// 编辑态只允许添加商品，其余信息只读且原样回传，因此只校验商品。
+			if (!this.isAdd) {
+				if (this.formData.goods.length == 0) {
+					uni.showToast({ title: '请选择商品', icon: 'none' })
+					return
+				}
+				this.requestSubmitData()
+				return
+			}
+			
 			if (!this.formData.name) {
 				uni.showToast({ title: '请输入团购名称', icon: 'none' })
 				return
 			}
 			if (this.formData.cat == 0) {
 				uni.showToast({ title: '请选择团购分类', icon: 'none' })
-				return
-			}
-			if (!Number(this.formData.pointId || 0)) {
-				uni.showToast({ title: this.pointList.length ? '请选择自提点' : '请先新增自提点', icon: 'none' })
 				return
 			}
 			if (this.formData.goods.length == 0) {
@@ -820,6 +827,22 @@ export default {
 	font-size: 28rpx;
 	text-align: right;
 	color: #111;
+}
+
+/* 编辑态：名称只读展示 */
+.name-text {
+	flex: 1;
+	min-width: 0;
+	font-size: 28rpx;
+	line-height: 40rpx;
+	text-align: right;
+	color: #111;
+	word-break: break-all;
+}
+
+/* 编辑态：只读设置行不可点击，去掉可点击的视觉暗示 */
+.row-readonly {
+	opacity: 0.85;
 }
 
 .intro-section {
@@ -1229,6 +1252,16 @@ export default {
 	background: #fff;
 }
 
+/* 标签列表为空时的占位（标签由后台维护，可能一个都没配） */
+.label-empty {
+	height: 200rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: #999;
+	font-size: 28rpx;
+}
+
 .label-picker-item {
 	height: 72rpx;
 	display: flex;
@@ -1259,6 +1292,7 @@ export default {
 	height: env(safe-area-inset-bottom);
 	background: #fff;
 }
+
 
 .time-sheet {
 	padding-left: 34rpx;

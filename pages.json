@@ -56,6 +56,14 @@
 			"style": { "navigationBarTitleText": "售后详情", "navigationStyle": "custom" }
 		},
 		{
+			"path": "pages/order/verify",
+			"style": {
+				"navigationBarTitleText": "订单核销",
+				"navigationStyle": "custom",
+				"enablePullDownRefresh": true // 自助核销后可下拉刷新待核销列表
+			}
+		},
+		{
 			"path": "pages/mine/index",
 			"style": { "navigationBarTitleText": "我的", "navigationStyle": "custom" }
 		},

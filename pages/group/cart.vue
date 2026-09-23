@@ -70,6 +70,7 @@ import {
 	getCartGoodsCount,
 	normalizeCreatedOrderNo,
 	normalizeGroupPickupPoint,
+	pickInvalidSpecCartItems,
 	resolveSelectedPickupPointId,
 	syncCheckoutGoodsToSessionCart,
 	updateCartGoodsQuantity
@@ -185,7 +186,7 @@ export default {
 		// 打开提货点弹框
 		showPointPicker(){
 			if(!this.pointList.length){
-				uni.showToast({ title: '暂无可选自提点', icon: 'none' })
+				uni.showToast({ title: '暂无可选自提点', icon: 'none', duration: 2500 })
 				return
 			}
 			this.$refs.pointRef.show(this.selectedPointId)
@@ -230,24 +231,32 @@ export default {
 			
 			// 请选择提货点
 			if(pointId == 0){
-				uni.showToast({ title: '请选择提货点', icon: 'none' })
+				uni.showToast({ title: '请选择提货点', icon: 'none', duration: 2500 })
 				return
 			}
 			this.persistSelectedPoint()
 			
 			// 请添加商品
 			if(this.cartGoodsList.length == 0){
-				uni.showToast({ title: '请添加商品', icon: 'none' })
+				uni.showToast({ title: '请添加商品', icon: 'none', duration: 2500 })
 				return
 			}
 			
 			if(!this.name.trim()){
-				uni.showToast({ title: '请输入收货人姓名', icon: 'none' })
+				uni.showToast({ title: '请输入收货人姓名', icon: 'none', duration: 2500 })
 				return
 			}
 			
 			if(!this.mobile.trim()){
-				uni.showToast({ title: '请输入收货人手机号', icon: 'none' })
+				uni.showToast({ title: '请输入收货人手机号', icon: 'none', duration: 2500 })
+				return
+			}
+			
+			// 多规格商品没选到 SKU 时不能下单（历史购物车里可能存着这样的条目）：
+			// 请求体会带 skuId=0、skuids 为空，后端按 SKU 扣库存会失败
+			const invalidSpecGoods = pickInvalidSpecCartItems(this.cartGoodsList)
+			if(invalidSpecGoods.length > 0){
+				showActionError('请重新选择商品规格：' + invalidSpecGoods.map(item => item.name || '商品').join('、'), { title: '商品规格缺失' })
 				return
 			}
 			
@@ -262,6 +271,8 @@ export default {
 			// 防重复提交
 			if (this.isRequesting) return
 			this.isRequesting = true
+			// 下单失败的原文（后端会返回「限购提示」「请稍后提交订单」等）留到 loading 关闭后再展示
+			let submitErrorMessage = ''
 			uni.showLoading({title: '请求中...', mask: true})			
 			
 			try {	
@@ -274,7 +285,8 @@ export default {
 					remark: this.remark,
 					cartGoodsList: this.cartGoodsList
 				})
-				const res = await addOrder(param)
+				// silentToast：失败提示由本页用 modal 展示（不会被 loading/跳转打断），请求层不再重复弹 toast
+				const res = await addOrder(param, { silentToast: true })
 				const orderNo = normalizeCreatedOrderNo(res.data)
 				if(!orderNo || orderNo == 0){	
 					console.log('下单接口未返回可支付订单编号：', res.data)
@@ -289,12 +301,27 @@ export default {
 			} catch (err) {
 				
 				console.log('下单支付失败：', err)
-				// 返回 "请稍后提交订单"或者"限购提示" 后继续提交订单
+				// 后端返回「请稍后提交订单」/「限购提示」等原文，不能吞掉
+				submitErrorMessage = String((err && (err.msg || err.message)) || '')
 				
 			} finally {
 				uni.hideLoading()
 				this.isRequesting = false
+				if (submitErrorMessage) this.showSubmitError(submitErrorMessage)
 			}
+		},
+		// 下单失败提示：用 modal 展示，必须手动确认，避免默认 1.5s 一闪而过。
+		// 注意调用时机必须在 hideLoading 之后：showLoading 与 showModal/showToast 共用同一层。
+		showSubmitError(message){
+			const content = String(message || '').trim() || '下单失败，请稍后重试'
+			setTimeout(() => {
+				uni.showModal({
+					title: '无法下单',
+					content,
+					showCancel: false,
+					confirmText: '我知道了'
+				})
+			}, 50)
 		},
 		// 发起支付
 		async doPay(orderNo) {
@@ -314,7 +341,8 @@ export default {
 				
 				// 请求易宝支付
 				const params = { orderNo: orderNo, openid: openid }
-				const res = await payOrder(params)
+				// 同上：支付失败提示由本页 modal 负责
+				const res = await payOrder(params, { silentToast: true })
 				payParams = res.data;
 				// payParams 就是微信支付参数：timeStamp、nonceStr、package、signType、paySign
 				
@@ -337,27 +365,32 @@ export default {
 				console.error('支付失败：', err)
 				const title = (err && err.msg) || (err && err.message) || '支付失败'
 				uni.hideLoading()
-				if(!err.silentToast){
-					uni.showToast({ title, icon: 'none' })
-				}
 				if(payParams == null){
+					if(!err.silentToast) uni.showToast({ title, icon: 'none', duration: 2500 })
 					return
 				}
-				// if (err.errMsg && err.errMsg.includes('cancel')) {
-				// 	uni.showToast({ title: '支付已取消', icon: 'none' })
-				// } else {
-				// 	uni.showToast({ title: '支付失败', icon: 'none' })
-				// }
-				
-				// 支付参数缓存到本地
-				if(payParams != null){
-					//const payParamsStr = JSON.stringify(payParams)
-					//uni.setStorageSync('payParamsStr', payParamsStr)
-					savePayCache(orderNo, payParams)
+				// 支付参数缓存到本地（便于订单详情页继续支付）
+				savePayCache(orderNo, payParams)
+				const gotoOrderDetail = () => {
+					uni.redirectTo({ url: '/pages/order/detail?orderNo=' + encodeURIComponent(orderNo)})
 				}
-				
-				// 跳转订单详情页面
-				uni.redirectTo({ url: '/pages/order/detail?orderNo=' + encodeURIComponent(orderNo)})
+				if(err.silentToast){
+					// 静默错误：调用方已提示过，直接进订单详情
+					gotoOrderDetail()
+					return
+				}
+				// 用 modal 而不是 toast：紧接着就要跳转订单详情，toast 会被页面跳转打断（表现为一闪而过）。
+				// 延迟一点再弹，确保外层 finally 的 hideLoading 已经执行完（loading 与 modal 共用同一层）。
+				setTimeout(() => {
+					uni.showModal({
+						title: '支付未完成',
+						content: String(title),
+						showCancel: false,
+						confirmText: '查看订单',
+						success: gotoOrderDetail,
+						fail: gotoOrderDetail
+					})
+				}, 60)
 			} finally {
 				
 				// 支付流程由 submitOrder 统一关闭 loading 和请求锁

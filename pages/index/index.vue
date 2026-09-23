@@ -33,7 +33,14 @@
 			<view class="leader-meta">
 				<view class="leader-name">{{ item.leaderName || '团长' }}</view>
 				<view class="leader-sub" v-if="item.label || item.timeText || item.viewText || item.joinText || item.distanceText">
-					<text class="group-label" :class="{ warm: isWarmLabel(item.label) }" v-if="item.label">{{ item.label }}</text>
+					<view class="group-label" v-if="item.labelStyle" :class="'tone-' + item.labelStyle.tone"
+						:style="{ color: item.labelStyle.color, borderColor: item.labelStyle.color }">
+						<view class="label-badge" v-if="item.labelStyle.icon || item.labelStyle.ring">
+							<image class="label-ring" v-if="item.labelStyle.ring" :src="item.labelStyle.ring" mode="aspectFit"></image>
+							<image class="label-icon" v-if="item.labelStyle.icon" :src="item.labelStyle.icon" mode="aspectFit"></image>
+						</view>
+						<text class="label-text">{{ item.labelStyle.text }}</text>
+					</view>
 					<text v-if="item.timeText">{{ item.timeText }}</text>
 					<text v-if="item.viewText">{{ (item.label || item.timeText) ? ' | ' : '' }}{{ item.viewText }}人查看</text>
 					<text v-if="item.joinText">{{ (item.label || item.timeText || item.viewText) ? ' | ' : '' }}{{ item.joinText }}次跟团</text>
@@ -97,6 +104,7 @@
 <script>
 import { getGroupCatList, getGroupShop, getMemberGroupActivityList, getMemberInfo, reportMemberGroupView } from "@/api/group.js"
 import { cacheMemberLoginInfo, pickMemberBoundLeaderId } from "@/utils/auth.js"
+import { logScanEntry } from "@/utils/scanDebug.js"
 import {
 	buildMemberHomeListPayload,
 	isMemberGroupOnline,
@@ -127,7 +135,8 @@ export default {
 		}
 	},
 	// 页面初始化加载数据
-	onLoad() {
+	onLoad(options = {}) {
+		logScanEntry('首页', options)
 		this.initGroupCatList()
 		this.prepareRecommendation()
 	},
@@ -430,10 +439,6 @@ export default {
 			
 			return record.code || record.id || record.orderId || record.userMobile || ''
 		},
-		isWarmLabel(label){
-			
-			return String(label || '').indexOf('快') > -1 || String(label || '').indexOf('热') > -1
-		},
 		formatRecordNum(num){
 			
 			const value = String(num || '')
@@ -629,20 +634,20 @@ export default {
 			margin-bottom: 26rpx;
 		}
 		.leader-avatar {
-			width: 64rpx;
-			height: 64rpx;
+			width: 80rpx;
+			height: 80rpx;
 			flex-shrink: 0;
-			border-radius: 8rpx;
+			border-radius: 6rpx;
 			background: #eeeeee;
 		}
 		.leader-meta {
 			flex: 1;
 			min-width: 0;
-			margin-left: 12rpx;
+			margin-left: 23rpx;
 		}
 		.leader-name {
 			color: $text-color-333;
-			font-size: 24rpx;
+			font-size: 28rpx;
 			font-weight: 600;
 			line-height: 1.3;
 		}
@@ -650,28 +655,60 @@ export default {
 			display: flex;
 			align-items: center;
 			min-width: 0;
-			margin-top: 6rpx;
+			margin-top: 13rpx;
 			color: $text-color-999;
-			font-size: 20rpx;
+			font-size: 24rpx;
 			line-height: 1.3;
 			white-space: nowrap;
 			overflow: hidden;
 		}
+		// 卡片标签药丸：左侧切图 + 文字，描边/文字颜色由 labelStyle.color 内联给定
+		// （超快回复 #ff7828 / 超多回头客 #4caf50 / 热门团购 #d81e06）
+		// 尺寸按设计图（店小团 (4)/个人信息@2x.png，750rpx 宽 @2x ⇒ 图内 1px = 1rpx）量得：
+		//   药丸外框 138×28~30、描边 2~3、圆环直径 ≈24、圆环→文字 15、文字字形高 18（≈22rpx 字号）、
+		//   文字右缘距右边框 16（左右留白对称）、药丸→meta 文字间距 ≈32
 		.group-label {
-			height: 30rpx;
-			line-height: 30rpx;
+			display: flex;
+			align-items: center;
+			height: 28rpx;
 			flex-shrink: 0;
-			margin-right: 10rpx;
-			padding: 0 10rpx;
+			margin-right: 32rpx;
+			padding-right: 16rpx;
 			box-sizing: border-box;
-			border-radius: 4rpx;
-			background: #e9fff3;
-			color: #20c66a;
-			font-size: 18rpx;
-			&.warm {
-				background: #fff3eb;
-				color: #ff4a1c;
-			}
+			border: 2rpx solid #dddddd;
+			border-radius: 14rpx;
+			overflow: hidden;
+			background: #ffffff;
+		}
+		.label-badge {
+			position: relative;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			width: 24rpx;
+			height: 24rpx;
+			flex-shrink: 0;
+		}
+		.label-ring {
+			position: absolute;
+			left: 0;
+			top: 0;
+			width: 24rpx;
+			height: 24rpx;
+		}
+		.label-icon {
+			width: 24rpx;
+			height: 24rpx;
+		}
+		// 闪电切图本身是细长比例（6:10），在圆环内按原比例居中：9×15rpx
+		.group-label.tone-fast .label-icon {
+			width: 9rpx;
+			height: 15rpx;
+		}
+		.label-text {
+			margin-left: 15rpx;
+			font-size: 22rpx;
+			line-height: 1;
 		}
 		.group-name {
 			color: $text-color-333;

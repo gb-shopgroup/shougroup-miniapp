@@ -31,6 +31,16 @@ export function normalizeLeaderSpecList(list) {
 	}).filter(item => item.name)
 }
 
+// 商品是否已下线：接口字段 isClose，非 0 即下线（「删除」走的也是这个字段）。
+export function isLeaderGoodsClosed(goods = {}) {
+	return Number(goods.isClose || 0) !== 0
+}
+
+// 商品状态标识文案。注意与团购活动区分：活动用「已关闭」，商品库用「已下线」。
+export function getLeaderGoodsStatusText(goods = {}) {
+	return isLeaderGoodsClosed(goods) ? '已下线' : ''
+}
+
 export function normalizeLeaderGoods(row = {}) {
 	const goods = row.goods && typeof row.goods === 'object' ? row.goods : row
 	const skuList = row.goods && typeof row.goods === 'object' ? row.skuList : (row.skuList || [])
@@ -122,6 +132,48 @@ export function buildGoodsAddSpecList(specs = [], options = {}) {
 			}))
 		}
 	}).filter(spec => spec.name && spec.specValLists.length > 0)
+}
+
+// 从单个规格值里取「自带的单位」：只有形如 `500g` / `1kg` / `2斤` / `1.5L`
+// （数字开头 + 单位后缀）才算，纯文字值（`S`、`红色`、`34`）取不到单位。
+export function extractUnitFromSpecValue(value = '') {
+	const text = String(value === undefined || value === null ? '' : value).trim()
+	const match = text.match(/^\d+(?:\.\d+)?\s*([a-zA-Z\u4e00-\u9fa5]+)$/)
+	return match ? match[1] : ''
+}
+
+// 规格值自带的单位：按规格、规格值顺序找第一个能取到单位的（如 重量: 500g/1kg → g）。
+// 取不到就返回空字符串——此时页面不覆盖用户已填的单位，仍由用户自己填。
+export function extractUnitFromSpecValues(specList = []) {
+	const specs = Array.isArray(specList) ? specList : []
+	for (let i = 0; i < specs.length; i += 1) {
+		const vals = Array.isArray(specs[i] && specs[i].vals) ? specs[i].vals : []
+		for (let j = 0; j < vals.length; j += 1) {
+			const unit = extractUnitFromSpecValue(vals[j] && vals[j].val)
+			if (unit) return unit
+		}
+	}
+	return ''
+}
+
+// 规格设置完成后的「带入」规则（添加/修改商品页用）：
+//   价格 = 所有规格里的最低价（多个价格取最低，只统计 >0 的）
+//   库存 = 所有规格库存合计（写入 stockNum）
+//   单位 = 规格值自带的单位（如 500g → g）；取不到则留空，不覆盖用户填写的单位
+export function deriveGoodsFieldsFromSkuList(skuList = [], specList = []) {
+	const skus = Array.isArray(skuList) ? skuList : []
+	const prices = skus
+		.map(item => Number(item && item.price || 0))
+		.filter(price => price > 0)
+	const stockTotal = skus.reduce((total, item) => {
+		const num = Number((item && (item.num === '' || item.num === undefined ? item.stock : item.num)) || 0)
+		return total + Math.max(num, 0)
+	}, 0)
+	return {
+		price: prices.length > 0 ? limitPricePrecision(String(Math.min(...prices))) : '',
+		stockNum: stockTotal > 0 ? String(stockTotal) : '',
+		unit: extractUnitFromSpecValues(specList)
+	}
 }
 
 export function buildGoodsSubmitPayload(form = {}, options = {}) {

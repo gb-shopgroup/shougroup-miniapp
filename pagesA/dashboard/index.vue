@@ -60,7 +60,7 @@
 				<text>黑名单</text>
 			</view>
 		</view>
-		<view class="agreement">《用户服务协议》</view>
+		<view class="agreement" @click="gotoArticle(1)">《用户服务协议》</view>
 	</view>
 </view>
 </template>
@@ -128,7 +128,17 @@ export default {
 			return this.leaderSuper || this.isStaffWorkbench()
 		},
 		openPage(url) {
-			uni.navigateTo({ url }).catch(() => { uni.redirectTo({ url }) })
+			uni.navigateTo({
+				url,
+				fail: () => { uni.redirectTo({ url }) }
+			})
+		},
+		gotoArticle(articleId) {
+			const url = '/pages/article/index?id=' + articleId
+			uni.navigateTo({
+				url,
+				fail: () => { uni.redirectTo({ url }) }
+			})
 		},
 		goToShopPage() {
 			if (!this.canUse(50)) return uni.showToast({ title: '没有权限', icon: 'none' })
@@ -144,11 +154,17 @@ export default {
 		},
 		scanOrder() {
 			if (!this.canUse(30)) return uni.showToast({ title: '没有权限', icon: 'none' })
+			// 不要限定 scanType：限定 ['qrCode'] 会导致微信小程序码扫不出来（与订单页扫码保持一致）。
 			uni.scanCode({
-				scanType: ['qrCode'],
 				success: res => {
 					const scan = parseLeaderOrderScanResult(res)
-					if (!scan.orderNo || !scan.isVerificationCode) {
+					console.log('[扫码核销] 码内容:', res.path || res.result || res.scene || '', '| 解析:', JSON.stringify(scan))
+					// 门店核销码的 scene 是 shopId=X，是给顾客自助核销用的，团长侧不处理但要给出准确提示。
+					if (!scan.orderNo && scan.shopId) {
+						uni.showToast({ title: '这是门店核销码，请让顾客扫码自助核销', icon: 'none' })
+						return
+					}
+					if (!scan.orderNo) {
 						uni.showToast({ title: '请扫描用户订单核销码', icon: 'none' })
 						return
 					}

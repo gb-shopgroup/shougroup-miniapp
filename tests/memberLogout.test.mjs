@@ -47,4 +47,16 @@ assert.equal(distAssetsSource.includes('/static/image/mine/switch.png'), true)
 const authSource = fs.readFileSync(new URL('../utils/auth.js', import.meta.url), 'utf8')
 assert.equal(authSource.includes("if (userInfo.token) uni.setStorageSync('token', userInfo.token)"), true)
 
+const loginSource = fs.readFileSync(new URL('../pages/login/index.vue', import.meta.url), 'utf8')
+assert.equal(loginSource.includes('@click="gotoArticle(1)"'), true)
+assert.equal(loginSource.includes('@click="gotoArticle(2)"'), true)
+assert.equal(loginSource.includes('uni.navigateTo({ url: url }).catch'), false)
+assert.equal(loginSource.includes('fail: () => { uni.redirectTo({ url }) }'), true)
+
+const leaderDashboardSource = fs.readFileSync(new URL('../pagesA/dashboard/index.vue', import.meta.url), 'utf8')
+assert.equal(leaderDashboardSource.includes('@click="gotoArticle(1)"'), true)
+assert.equal(leaderDashboardSource.includes('gotoArticle(articleId)'), true)
+assert.equal(leaderDashboardSource.includes('uni.navigateTo({ url }).catch'), false)
+assert.equal(leaderDashboardSource.includes('fail: () => { uni.redirectTo({ url }) }'), true)
+
 console.log('memberLogout tests passed')

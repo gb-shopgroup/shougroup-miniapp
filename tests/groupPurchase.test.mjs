@@ -20,6 +20,7 @@ import {
 	normalizeCreatedOrderNo,
 	normalizeGroupGoods,
 	normalizeGroupGoodsList,
+	pickInvalidSpecCartItems,
 	normalizeGroupPickupPoint,
 	normalizeGroupSkuList,
 	normalizeSkuNames,
@@ -27,6 +28,7 @@ import {
 	reconcileSelectedCartKeys,
 	removeSelectedCartGoods,
 	resolveSelectedPickupPointId,
+	setCartGoodsQuantity,
 	syncCheckoutGoodsToSessionCart,
 	updateCartGoodsQuantity
 } from '../utils/groupPurchase.js'
@@ -223,6 +225,8 @@ assert.deepEqual(cartItem, {
 	img: '/a.png',
 	price: 12.5,
 	type: 1,
+	// 该 fixture 没有 specs → 不是多规格商品（新增字段：购物车据此校验 skuId）
+	hasSpecs: false,
 	stock: 1,
 	balance: 9,
 	limit: 1,
@@ -244,6 +248,24 @@ assert.deepEqual(mergeCartGoods([
 	{ id: 7, skuids: '2,3', num: 3 },
 	{ id: 7, skuids: '4', num: 1 }
 ])
+
+// 选规格弹窗写入：已存在的「商品 + 规格」按弹窗数量覆盖，不累加（否则同步后又翻倍）。
+assert.deepEqual(setCartGoodsQuantity([
+	{ id: 7, skuids: '2,3', num: 1, price: 1 },
+	{ id: 7, skuids: '4', num: 1, price: 2 }
+], { id: 7, skuids: '2,3', num: 3, price: 5, balance: 8, img: '/new.png' }), [
+	{ id: 7, skuids: '2,3', num: 3, price: 5, balance: 8, img: '/new.png' },
+	{ id: 7, skuids: '4', num: 1, price: 2 }
+])
+// 购物车里没有该规格时新增一行。
+assert.deepEqual(setCartGoodsQuantity([{ id: 7, skuids: '2,3', num: 3 }], { id: 7, skuids: '4', num: 1, price: 2 }), [
+	{ id: 7, skuids: '2,3', num: 3 },
+	{ id: 7, skuids: '4', num: 1, price: 2 }
+])
+// 不修改入参数组。
+const setTargetCart = [{ id: 7, skuids: '2,3', num: 1 }]
+setCartGoodsQuantity(setTargetCart, { id: 7, skuids: '2,3', num: 4 })
+assert.equal(setTargetCart[0].num, 1)
 
 assert.equal(getCartGoodsCount([{ num: 2 }, { num: 3 }, { num: 0 }]), 5)
 assert.equal(calculateCartTotal([{ price: 1.5, num: 2 }, { price: '2.00', num: 3 }]), '9.00')
@@ -391,6 +413,18 @@ assert.deepEqual(buildOrderPayload({
 const addCartSource = fs.readFileSync(new URL('../pages/group/add.vue', import.meta.url), 'utf8')
 assert.equal(addCartSource.includes('商品规格价格未配置'), false)
 assert.equal(addCartSource.includes('this.goods.skus.length > 0 && !this.selectedSku'), false)
+// 规格选中态必须走 refresh 刷新机制，否则切换规格后高亮不更新。
+assert.equal(addCartSource.includes('isSpecValActive(spec.specId, val.valId)'), true)
+assert.equal(addCartSource.includes('selectedSpecValIndexArray[spec.specId] === val.valId'), false)
+assert.equal(addCartSource.includes('isSpecValActive(specId, valId) {'), true)
+// 弹窗必须回填购物车里该商品已选的规格与数量，切规格时也要重新同步。
+assert.equal(addCartSource.includes('show(goodsInfo, balance, cartGoodsList = [])'), true)
+assert.equal(addCartSource.includes('this.cartGoodsList = Array.isArray(cartGoodsList) ? cartGoodsList : []'), true)
+assert.equal(addCartSource.includes('this.initSelectSpecMapStruct(this.resolveCartItemForGoods())'), true)
+assert.equal(addCartSource.includes('syncQuantityFromCart()'), true)
+assert.equal(addCartSource.includes('getCartItemKey(this.goods)'), true)
+assert.match(addCartSource, /this\.syncSelectedSpecText\(\)\s*\/\/ 切规格后数量回到该规格在购物车中的数量（没有则 1）\s*this\.syncQuantityFromCart\(\)/)
+assert.equal(addCartSource.includes('cartGoodsList: [],'), true)
 
 const checkoutSource = fs.readFileSync(new URL('../pages/group/cart.vue', import.meta.url), 'utf8')
 assert.equal(checkoutSource.includes('selectedPointId'), true)
@@ -399,6 +433,66 @@ assert.equal(checkoutSource.includes('this.$refs.pointRef.show(this.selectedPoin
 assert.equal(checkoutSource.includes('selectedPointIndex'), false)
 assert.equal(checkoutSource.includes("uni.getStorageSync('pointId')"), false)
 assert.equal(checkoutSource.includes("uni.showToast({ title: '请选择提货点'"), true)
+// ===== 端到端：规格弹层 → 购物车 → 结算快照 → 下单体，skuId 必须一路保留 =====
+const skuGoods = { id: 80, name: '望京外来品种黑玉米', price: 0.4, specs: [{ specId: 1 }] }
+// ① 规格弹层选中规格后加购
+const pickedItem = createCartItemFromGoods(skuGoods, { num: 2, skuId: 497, skuids: '170', skunames: '每个约300克' })
+// ② 进购物车（merge/set 都是整对象拷贝）
+const cartAfterAdd = setCartGoodsQuantity([], pickedItem)
+// ③ 结算页改数量（同样整对象拷贝）
+const cartAfterQty = updateCartGoodsQuantity(cartAfterAdd, 0, 1)
+assert.equal(cartAfterQty[0].skuId, 497)
+// ④ 下单体
+const chainPayload = buildOrderPayload({
+	groupId: 34, pointId: 7, name: '菲黎莫属', mobile: '15801281362', cartGoodsList: cartAfterQty
+})
+assert.deepEqual(chainPayload.goods, [{
+	id: 80, num: 3, packId: 0, packName: '', packNum: 0, skuId: 497, skuids: '170', skunames: '每个约300克'
+}])
+// ⑤ 结算页回写购物车也不丢 skuId
+const syncedCart = syncCheckoutGoodsToSessionCart(cartAfterQty, cartAfterAdd, cartAfterQty)
+assert.equal(syncedCart[0].skuId, 497)
+
+// ===== 多规格商品必须有 skuId（否则下单带 skuId=0，后端按 SKU 扣库存失败）=====
+// 购物车条目记录「该商品是否多规格」
+const multiSpecItem = createCartItemFromGoods({ id: 80, name: '多规格商品', specs: [{ specId: 1 }] }, { num: 4 })
+assert.equal(multiSpecItem.hasSpecs, true)
+assert.equal(multiSpecItem.skuId, 0)
+const singleSpecItem = createCartItemFromGoods({ id: 81, name: '单规格商品' }, { num: 2 })
+assert.equal(singleSpecItem.hasSpecs, false)
+// 选全规格的条目：下单体必须带上 skuId / skuids / skunames
+const skuItem = createCartItemFromGoods({ id: 80, name: '多规格商品', specs: [{ specId: 1 }] }, { num: 4, skuId: 497, skuids: '170', skunames: '每个约300克' })
+assert.deepEqual(buildOrderGoodsPayload([skuItem]), [{
+	id: 80, num: 4, packId: 0, packName: '', packNum: 0, skuId: 497, skuids: '170', skunames: '每个约300克'
+}])
+// 拦截器：多规格但没选到 SKU 的条目（含历史购物车脏数据）
+assert.deepEqual(pickInvalidSpecCartItems([multiSpecItem]).map(item => item.name), ['多规格商品'])
+assert.deepEqual(pickInvalidSpecCartItems([multiSpecItem, skuItem, singleSpecItem]).map(item => item.name), ['多规格商品'])
+assert.equal(pickInvalidSpecCartItems([skuItem, singleSpecItem]).length, 0)
+assert.deepEqual(pickInvalidSpecCartItems(null), [])
+// 规格弹层：多规格必须选全规格才允许加购
+const specDialogSource = fs.readFileSync(new URL('../pages/group/add.vue', import.meta.url), 'utf8')
+assert.equal(specDialogSource.includes("if(this.specList.length > 0 && !this.selectedSku){"), true)
+assert.equal(specDialogSource.includes("uni.showToast({ title: '请选择完整的商品规格', icon: 'none', duration: 2500 })"), true)
+// 下单前兜底拦截（历史购物车里的脏数据）
+assert.equal(checkoutSource.includes('pickInvalidSpecCartItems(this.cartGoodsList)'), true)
+assert.equal(checkoutSource.includes("'请重新选择商品规格：'"), true)
+assert.equal(checkoutSource.includes("title: '商品规格缺失'"), true)
+
+// 校验提示别一闪而过：默认 1.5s 太短，统一延长
+assert.equal(checkoutSource.includes("uni.showToast({ title: '请选择提货点', icon: 'none', duration: 2500 })"), true)
+assert.equal(checkoutSource.includes("uni.showToast({ title: '请添加商品', icon: 'none', duration: 2500 })"), true)
+// 下单失败（限购提示/请稍后提交订单）不能吞掉，且必须放到 hideLoading 之后再弹——
+// loading 期间弹出的提示会被紧接着的 hideLoading 立刻关掉（就是「一闪而过」的成因）
+assert.equal(checkoutSource.includes('let submitErrorMessage = '), true)
+assert.equal(checkoutSource.includes('submitErrorMessage = String((err && (err.msg || err.message)) || \'\')'), true)
+assert.equal(checkoutSource.includes('if (submitErrorMessage) this.showSubmitError(submitErrorMessage)'), true)
+assert.equal(checkoutSource.includes('showSubmitError(message){'), true)
+assert.equal(checkoutSource.includes("title: '无法下单'"), true)
+assert.equal(checkoutSource.includes('showCancel: false'), true)
+// 支付失败：modal 展示后再跳订单详情（toast 会被页面跳转打断）
+assert.equal(checkoutSource.includes("title: '支付未完成'"), true)
+assert.equal(checkoutSource.includes("confirmText: '查看订单'"), true)
 
 const groupDetailSource = fs.readFileSync(new URL('../pages/group/index.vue', import.meta.url), 'utf8')
 assert.equal(groupDetailSource.includes('const checkoutContext = this.getCurrentCartContext()'), true)
@@ -408,5 +502,35 @@ assert.equal(groupDetailSource.includes('app.globalData.sessionCheckoutGoodsList
 assert.equal(groupDetailSource.includes('this.$refs.cartDialogRef.hide()'), true)
 assert.equal(groupDetailSource.includes('this.cartGoodsList = this.cartGoodsList.filter(item => item.num > 0)'), false)
 assert.equal(groupDetailSource.includes('const checkoutContext = app.globalData.sessionCartContext || this.getCurrentCartContext()'), false)
+// 多规格商品加购后必须保留「加入购物车」入口，否则无法再选择其它规格。
+assert.equal(groupDetailSource.includes('!hasSelectableSpec(item) && getSelectedGoodsCount(item) > 0'), true)
+assert.equal(groupDetailSource.includes('hasSelectableSpec(item){'), true)
+assert.equal(groupDetailSource.includes('Array.isArray(item && item.specs) && item.specs.length > 0'), true)
+assert.equal(groupDetailSource.includes('v-else-if="isBlackMember==false && getSelectedGoodsCount(item) > 0"'), false)
+// 父页面把购物车传给弹窗，并用覆盖语义写回，避免同步后又累加翻倍。
+assert.equal(groupDetailSource.includes('this.$refs.addCartRef.show(product, goodsStockVal, this.cartGoodsList)'), true)
+assert.equal(groupDetailSource.includes('setCartGoodsQuantity(this.cartGoodsList, goods)'), true)
+assert.equal(groupDetailSource.includes('mergeCartGoods'), false)
+
+// 多规格切换：选中不同规格值必须算出不同的 skuids / skuId，供购物车按规格分行。
+const switchSpecList = normalizeSpecList([
+	{ specId: 1, specName: '重量', valList: [{ valId: 10, valName: '500g' }, { valId: 11, valName: '1kg' }] }
+])
+const switchSkus = normalizeGroupSkuList([
+	{ id: 1, ids: '10', names: '500g', price: 2, stock: 9 },
+	{ id: 2, ids: '11', names: '1kg', price: 3, stock: 9 }
+])
+const switchNamesMap = {}
+switchSpecList.forEach(spec => spec.valList.forEach(val => { switchNamesMap[val.valId] = val.valName }))
+const selectedSpecMap = {}
+switchSpecList.forEach(spec => { selectedSpecMap[spec.specId] = spec.valList[0].valId })
+assert.equal(findSkuBySelectedSpec(switchSkus, selectedSpecMap, switchNamesMap).ids, '10')
+selectedSpecMap[1] = 11
+assert.equal(findSkuBySelectedSpec(switchSkus, selectedSpecMap, switchNamesMap).ids, '11')
+// 同一商品不同规格在购物车中是两行，不会被合并。
+assert.equal(mergeCartGoods(
+	[createCartItemFromGoods({ id: 7, price: 2 }, { skuids: '10', num: 1 })],
+	createCartItemFromGoods({ id: 7, price: 3 }, { skuids: '11', num: 1 })
+).length, 2)
 
 console.log('groupPurchase tests passed')

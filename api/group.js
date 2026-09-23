@@ -147,21 +147,23 @@ export function regUser(data) {
 }
 
 // 添加订单
-export function addOrder(data) {
-	return request({
+// options 可透传请求层选项，例如 { silentToast: true }：
+// 下单失败（限购/库存不足等）由页面用 modal 展示后端原文，不再让请求层先弹一条 toast。
+export function addOrder(data, options = {}) {
+	return request(Object.assign({
 		url: '/order/group/add',
 		method: 'POST',
 		data: data
-	})
+	}, options))
 }
 
 // 支付订单
-export function payOrder(params) {
-	return request({
+export function payOrder(params, options = {}) {
+	return request(Object.assign({
 		url: '/order/payment/order/pay',
 		method: 'GET',
 		data: params
-	})
+	}, options))
 }
 
 // 订单列表
@@ -202,22 +204,26 @@ export function queryWxOrderStatus(params) {
 	})
 }
 
-// 订单收货
-export function receiptOrder(params) {
-	return request({
-		url: '/order/group/order/receipt',
-		method: 'GET',
-		data: params
-	})
+// 订单提货/核销：POST /order/group/order/part/receipt
+// body { orderNo, pointId, goodsList }；goodsList 不传/空 = 整单核销，传 [{ id, num }] = 部分核销。
+// 取代旧的 GET /order/group/order/receipt?orderNo=&point=（同一功能，新接口支持部分核销）。
+// options 可透传请求层选项（如 { silentToast: true }：失败提示由页面用 modal 负责）
+export function receiptOrder(data = {}, options = {}) {
+	return request(Object.assign({
+		url: '/order/group/order/part/receipt',
+		method: 'POST',
+		data
+	}, options))
 }
 
 // 申请退款
-export function refundOrder(data) {
-	return request({
+// options 可透传请求层选项（如 { silentToast: true }：失败提示由页面用 modal 负责）
+export function refundOrder(data, options = {}) {
+	return request(Object.assign({
 		url: '/order/group/order/apply/refund',
 		method: 'POST',
 		data: data
-	})
+	}, options))
 }
 
 // 按退款类型获取订单可申请售后的商品和数量。
@@ -256,10 +262,12 @@ export function getApplyRefundOrderList(data) {
 	})
 }
 
-// 用户扫码店铺码后的待核销订单列表
-export function getPaidOrders(params) {
+// 用户扫码门店核销码后：该用户在该店铺下「未全部提货」的订单列表（待核销）。
+// 接口文档：GET /order/group/order/notAllReceiptList?shopId=（shopId 必填）。
+// 旧路径 /order/group/order/getPaidOrders 在接口文档中不存在，已按文档切换。
+export function getNotAllReceiptOrders(params = {}) {
 	return request({
-		url: '/order/group/order/getPaidOrders',
+		url: '/order/group/order/notAllReceiptList',
 		method: 'GET',
 		data: params
 	})

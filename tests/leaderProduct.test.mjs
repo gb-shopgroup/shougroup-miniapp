@@ -2,6 +2,9 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import {
 	buildGoodsSubmitPayload,
+	deriveGoodsFieldsFromSkuList,
+	getLeaderGoodsStatusText,
+	isLeaderGoodsClosed,
 	buildGroupGoodsReference,
 	buildPagedGoodsState,
 	buildSkuListWithServerIds,
@@ -12,6 +15,7 @@ import {
 	buildSpecUpdatePayload,
 	cloneSpecAsDraft,
 	extractCreatedGoodsId,
+	extractUnitFromSpecValue,
 	formatSpecSummary,
 	formatStockSummary,
 	inferSpecListFromSkuList,
@@ -586,5 +590,82 @@ assert.equal(pagePaths.includes('goods/sku'), false)
 assert.equal(pagePaths.includes('goods/spec'), false)
 assert.equal(pagePaths.includes('goods/pack'), false)
 assert.equal(pagePaths.includes('goods/packNew'), false)
+
+// ===== 商品库「已下线」标识 =====
+// 接口字段 isClose 非 0 即下线（「删除」走的也是这个字段）
+assert.equal(isLeaderGoodsClosed({ isClose: 0 }), false)
+assert.equal(isLeaderGoodsClosed({ isClose: 1 }), true)
+assert.equal(isLeaderGoodsClosed({ isClose: '1' }), true)
+assert.equal(isLeaderGoodsClosed({ isClose: 2 }), true)
+assert.equal(isLeaderGoodsClosed({}), false)
+assert.equal(getLeaderGoodsStatusText({ isClose: 1 }), '已下线')
+assert.equal(getLeaderGoodsStatusText({ isClose: 0 }), '')
+assert.equal(getLeaderGoodsStatusText({}), '')
+// normalizeLeaderGoods 必须保留 isClose，否则列表拿不到状态
+assert.equal(normalizeLeaderGoods({ id: 1, goodsName: 'x', isClose: 1 }).isClose, 1)
+
+const goodsLibrarySource = fs.readFileSync(new URL('../pagesA/goods/index.vue', import.meta.url), 'utf8')
+// 名称旁展示「已下线」标识
+assert.equal(goodsLibrarySource.includes('<text v-if="goodsStatusText(item)" class="product-status">{{ goodsStatusText(item) }}</text>'), true)
+assert.equal(goodsLibrarySource.includes('return getLeaderGoodsStatusText(item)'), true)
+assert.equal(goodsLibrarySource.includes('.product-status {'), true)
+assert.equal(goodsLibrarySource.includes('color: #999;'), true)
+// 已下线的商品按钮变「恢复」：接口是「启用/关闭」切换语义，
+// 否则再点一次「删除」会把它切回上线
+assert.equal(goodsLibrarySource.includes('<button v-if="isGoodsClosed(item)" size="mini" @click="restoreProduct(item)">恢复</button>'), true)
+assert.equal(goodsLibrarySource.includes('restoreProduct(item) {'), true)
+assert.equal(goodsLibrarySource.includes('return isLeaderGoodsClosed(item)'), true)
+
+// ===== 添加/修改商品页：规格优先 + 规格值带入 价格/库存/单位 =====
+// 单位取「规格值自带的单位」：只有数字开头的规格值才算（500g → g、2斤 → 斤）
+assert.equal(extractUnitFromSpecValue('500g'), 'g')
+assert.equal(extractUnitFromSpecValue('1kg'), 'kg')
+assert.equal(extractUnitFromSpecValue('2斤'), '斤')
+assert.equal(extractUnitFromSpecValue('1.5L'), 'L')
+assert.equal(extractUnitFromSpecValue('500 g'), 'g')
+// 纯文字 / 纯数字规格值取不到单位 → 不带入，仍由用户自己填
+assert.equal(extractUnitFromSpecValue('S'), '')
+assert.equal(extractUnitFromSpecValue('红色'), '')
+assert.equal(extractUnitFromSpecValue('34'), '')
+assert.equal(extractUnitFromSpecValue(''), '')
+
+// 价格取所有规格里的最低价；库存取所有规格库存合计；单位取规格值自带的单位
+assert.deepEqual(deriveGoodsFieldsFromSkuList([
+	{ names: 'S', price: 12.5, num: 3 },
+	{ names: 'M', price: 9.9, num: 5 },
+	{ names: 'L', price: 15, num: 2 }
+], [{ name: '重量', vals: [{ val: '500g' }, { val: '1kg' }] }]), { price: '9.9', stockNum: '10', unit: 'g' })
+// 规格值里没有单位（尺码 S/M/L）→ 单位留空，不覆盖用户填写的单位
+assert.deepEqual(deriveGoodsFieldsFromSkuList([{ names: 'S', price: 5, num: 1 }], [{ name: '尺码', vals: [{ val: 'S' }, { val: 'M' }] }]),
+	{ price: '5', stockNum: '1', unit: '' })
+// 多规格时跳过取不到单位的规格（颜色前面、重量后面 → 取重量的单位）
+assert.equal(deriveGoodsFieldsFromSkuList([{ price: 1, num: 1 }], [
+	{ name: '颜色', vals: [{ val: '红色' }] },
+	{ name: '重量', vals: [{ val: '2斤' }] }
+]).unit, '斤')
+// 库存字段名为 stock 时同样统计；0 库存不计入（合计为 0 时留空，由用户手填）
+assert.deepEqual(deriveGoodsFieldsFromSkuList([{ price: 2, stock: 4 }], []), { price: '2', stockNum: '4', unit: '' })
+assert.deepEqual(deriveGoodsFieldsFromSkuList([{ price: 1, num: 0 }], []), { price: '1', stockNum: '', unit: '' })
+// 没有规格 / 没有 SKU 时不带入（页面仍要求手填）
+assert.deepEqual(deriveGoodsFieldsFromSkuList([], []), { price: '', stockNum: '', unit: '' })
+assert.deepEqual(deriveGoodsFieldsFromSkuList(null, null), { price: '', stockNum: '', unit: '' })
+
+const goodsAddSource = fs.readFileSync(new URL('../pagesA/goods/add.vue', import.meta.url), 'utf8')
+// 商品规格必须排在商品价格之前（优先设置规格）
+assert.equal(goodsAddSource.indexOf('<text class="label">商品规格</text>') < goodsAddSource.indexOf('<text class="label required">商品价格</text>'), true)
+// 规格保存回传后带入三字段
+assert.equal(goodsAddSource.includes('applySpecDerivedFields()'), true)
+assert.equal(goodsAddSource.includes('deriveGoodsFieldsFromSkuList(this.formData.skuList, this.formData.specList)'), true)
+assert.equal(goodsAddSource.includes('this.formData.price = derived.price'), true)
+assert.equal(goodsAddSource.includes('this.formData.stockNum = derived.stockNum'), true)
+assert.equal(goodsAddSource.includes('this.formData.unit = derived.unit'), true)
+// 单位只能来自规格值/用户输入，不能用规格名写死
+assert.equal(goodsAddSource.includes('firstSpec.name'), false)
+// 不设置规格时必须手填价格/库存/单位
+assert.equal(goodsAddSource.includes("if (!this.hasValidSpecs && !String(this.formData.stockNum || '').trim()) {"), true)
+// 保存前再兜一次：有多规格时库存一律取所有规格库存之和
+assert.equal(goodsAddSource.includes('const specStock = deriveGoodsFieldsFromSkuList(this.formData.skuList, this.formData.specList).stockNum'), true)
+assert.equal(goodsAddSource.includes('if (specStock) this.formData.stockNum = specStock'), true)
+assert.equal(goodsAddSource.includes("uni.showToast({ title: '请输入商品库存', icon: 'none' })"), true)
 
 console.log('leaderProduct tests passed')

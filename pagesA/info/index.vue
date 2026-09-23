@@ -97,29 +97,19 @@ export default {
 			if (leaderAvatar) uni.setStorageSync('leader_avatar', leaderAvatar)
 		},
 		cacheLeaderShopInfo(shopInfo = {}) {
+			// 只缓存店铺基础信息用于其它页面展示；核销码不再落本地缓存，
+			// 一律以 /user/leader/shop/info 返回的 shopCodeUrl 为准（无值即表示尚未生成）。
 			const normalized = normalizeLeaderShop(Object.assign({}, this.formData, shopInfo))
 			uni.setStorageSync('leader_shop_info', normalized)
-			if (normalized.shopCodeUrl) uni.setStorageSync('leader_shop_qr_url', normalized.shopCodeUrl)
-		},
-		mergeCachedShopQrUrl(shopInfo = {}) {
-			const normalized = normalizeLeaderShop(shopInfo)
-			if (normalized.shopCodeUrl) return normalized
-			const cached = uni.getStorageSync('leader_shop_info') || {}
-			const sameShop = !normalized.shopId || !cached.shopId || Number(normalized.shopId) === Number(cached.shopId)
-			if (sameShop && (cached.shopCodeUrl || cached.shopUrl)) {
-				const shopCodeUrl = cached.shopCodeUrl || cached.shopUrl
-				return normalizeLeaderShop(Object.assign({}, normalized, { shopCodeUrl, shopUrl: shopCodeUrl }))
-			}
-			return normalized
 		},
 		async refreshShopInfoAfterQrGenerated(shopUrl) {
 			try {
 				const res = await getLeaderShopInfo()
-				const nextInfo = this.mergeCachedShopQrUrl(Object.assign({}, res.data || {}, {
-					shopCodeUrl: (res.data && (res.data.shopCodeUrl || res.data.shopUrl || res.data.url)) || shopUrl,
-					shopUrl: (res.data && (res.data.shopCodeUrl || res.data.shopUrl || res.data.url)) || shopUrl
+				const apiCodeUrl = (res.data && (res.data.shopCodeUrl || res.data.shopUrl || res.data.url)) || ''
+				this.formData = normalizeLeaderShop(Object.assign({}, res.data || {}, {
+					shopCodeUrl: apiCodeUrl || shopUrl,
+					shopUrl: apiCodeUrl || shopUrl
 				}))
-				this.formData = nextInfo
 				this.isCreateMode = !this.formData.shopId
 				this.syncLeaderShopContext(this.formData)
 				this.cacheLeaderShopInfo(this.formData)
@@ -130,7 +120,8 @@ export default {
 		async initShopInfo() {
 			try {
 				const res = await getLeaderShopInfo()
-				this.formData = this.mergeCachedShopQrUrl(res.data || {})
+				// 核销码只认接口返回值：没有 shopCodeUrl 就说明后端还没生成。
+				this.formData = normalizeLeaderShop(res.data || {})
 				this.isCreateMode = !this.formData.shopId
 				if (res.data) {
 					this.syncLeaderShopContext(this.formData)

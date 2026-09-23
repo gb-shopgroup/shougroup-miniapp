@@ -197,9 +197,12 @@ assert.equal(shopPageSource.includes('const existingQrUrl = this.formData.shopCo
 assert.equal(shopPageSource.includes('if (existingQrUrl)'), true)
 assert.equal(shopPageSource.includes('return'), true)
 assert.equal(shopPageSource.includes("uni.setStorageSync('leader_shop_info'"), true)
-assert.equal(shopPageSource.includes("uni.setStorageSync('leader_shop_qr_url'"), true)
 assert.equal(shopPageSource.includes("uni.setStorageSync('leader_avatar'"), true)
-assert.equal(shopPageSource.includes('mergeCachedShopQrUrl'), true)
+// 核销码以 /user/leader/shop/info 返回的 shopCodeUrl 为唯一来源：
+// 不再写 leader_shop_qr_url，也不再用本地缓存回填缺失的二维码。
+assert.equal(shopPageSource.includes("uni.setStorageSync('leader_shop_qr_url'"), false)
+assert.equal(shopPageSource.includes('mergeCachedShopQrUrl'), false)
+assert.equal(shopPageSource.includes('this.formData = normalizeLeaderShop(res.data || {})'), true)
 assert.equal(shopPageSource.includes('refreshShopInfoAfterQrGenerated(shopUrl)'), true)
 assert.equal(shopPageSource.includes('await makeLeaderShopQrCode({ shopId: Number(this.formData.shopId || 0) })'), true)
 assert.equal(shopPageSource.includes('updateLeaderShopQrCode'), false)
@@ -256,6 +259,12 @@ assert.equal(pointAddSource.includes('bottom-bar'), true)
 assert.equal(pointAddSource.includes('padding: 18rpx 32rpx calc(18rpx + env(safe-area-inset-bottom));'), true)
 assert.equal(pointAddSource.includes('border-radius: 8rpx;'), true)
 assert.equal(pointAddSource.includes('optional-start'), true)
+// 新增自提点成功后把新自提点回传上级页面（开团页自动选中），编辑态不回传。
+assert.equal(pointAddSource.includes('emitCreatedPoint'), true)
+assert.equal(pointAddSource.includes("eventChannel.emit('acceptLeaderPoint'"), true)
+assert.equal(pointAddSource.includes('getOpenerEventChannel'), true)
+assert.equal(pointAddSource.includes('createdId = Number(res && res.data || 0)'), true)
+assert.equal(pointAddSource.includes('if (this.isEdit) {'), true)
 
 const businessAddSource = fs.readFileSync(new URL('../pagesA/business/add.vue', import.meta.url), 'utf8')
 assert.equal(businessAddSource.includes('v-model="formData.tax"'), true)

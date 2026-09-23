@@ -53,7 +53,10 @@ const LOGIN_STORAGE_KEYS = [
 	'leader_pointIds',
 	'leader_super',
 	'leader_role',
-	'leader_avatar'
+	'leader_avatar',
+	// 店铺缓存含店铺信息与核销码，换账号登录必须清掉，避免显示上一个团长的数据
+	'leader_shop_info',
+	'leader_shop_qr_url'
 ]
 
 function resolveAvatarUrl(value) {

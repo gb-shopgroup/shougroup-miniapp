@@ -32,7 +32,7 @@
 					<text class="group-name">{{ item.name || '团购名称' }}</text>
 					<text class="price-range">¥{{ formatPriceRange(item) }}</text>
 				</view>
-				<text class="publish-date">{{ item.endDateText || '' }}发布</text>
+				<text class="publish-date">{{ item.startDateText || '' }}发布</text>
 			</view>
 
 			<view class="image-row">
@@ -48,9 +48,9 @@
 			</view>
 
 			<view class="metrics">
-				<text>实际收入： ¥{{ formatAmount(item.realIncome || item.income || item.price || 0) }}</text>
-				<text>退款金额： ¥{{ formatAmount(item.refundAmount || 0) }}</text>
-				<text>跟团人数： {{ item.order || item.virtual || 0 }}</text>
+				<text>实际收入： ¥{{ formatAmount(item.realIncome) }}</text>
+				<text>退款金额： ¥{{ formatAmount(item.refundAmount) }}</text>
+				<text>跟团人数： {{ item.joinCount }}</text>
 			</view>
 		</view>
 
