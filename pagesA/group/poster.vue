@@ -31,17 +31,20 @@ export default {
 	},
 	computed: {
 		shareData(){
+			const params = [`id=${encodeURIComponent(this.item.id || '')}`]
+			const activityLeaderId = Number(this.item.lid || 0)
+			if (activityLeaderId > 0) params.push(`lid=${encodeURIComponent(activityLeaderId)}`)
 			return {
 				title: this.item.name,
 				imageUrl: this.item.img,
-				path: `/pages/group/index?id=${this.item.id}&lid=${this.item.lid}`
+				path: `/pages/group/index?${params.join('&')}`
 			}
 		}
 	},
 	methods: {
 		show(data, url){
 			this.item.id = data.id
-			this.item.lid = data.lid
+			this.item.lid = data.lid || data.leaderId || 0
 			this.item.name = data.name
 			this.item.img = url || data.img || ''
 			this.showModal = true

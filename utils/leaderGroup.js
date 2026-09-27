@@ -208,7 +208,9 @@ export function normalizeLeaderGroup(row = {}) {
 		shop.shopLogo || shop.logo || shop.shopAvatar || shop.avatar || shop.headImg || shop.headimgurl || shop.wxAvatar || ''
 	const normalized = {
 		id: row.id || 0,
-		lid: row.lid || 0,
+		// 活动归属团长是 C 端分享、扫码落地和会员绑定的唯一来源。
+		// 团长端接口历史上存在 lid / leaderId 两种返回名，不能因字段别名丢失后回退当前操作者身份。
+		lid: row.lid || row.leaderId || 0,
 		cat: row.cat || 0,
 		name: row.name || '',
 		shopName: row.shopName || row.leaderName || row.nickname || shop.name || shop.shopName || '',

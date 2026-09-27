@@ -110,6 +110,16 @@
 					<text class="setting-arrow" v-if="isAdd">›</text>
 				</view>
 			</view>
+			<!-- 虚拟跟团数直接随 virtual 字段提交，由后端负责存储及统计口径。 -->
+			<view class="setting-row">
+				<text>跟团数</text>
+				<input
+					class="virtual-input"
+					type="number"
+					v-model="formData.virtual"
+					placeholder="默认为0"
+					@blur="normalizeVirtualCount" />
+			</view>
 		</view>
 	</scroll-view>
 	
@@ -562,8 +572,10 @@ export default {
 		},
 		// 提交保存团购
 		submitForm() {
+			// 新增和编辑都统一提交非负整数 virtual，不在前端累计该数值。
+			this.normalizeVirtualCount()
 			
-			// 编辑态只允许添加商品，其余信息只读且原样回传，因此只校验商品。
+			// 编辑态允许调整虚拟跟团数，其余信息只读且原样回传，因此只校验商品。
 			if (!this.isAdd) {
 				if (this.formData.goods.length == 0) {
 					uni.showToast({ title: '请选择商品', icon: 'none' })
@@ -616,6 +628,11 @@ export default {
 		buildSubmitData(){
 			
 			return buildLeaderGroupSubmitPayload(this.formData)
+		},
+		// 防止空值、小数或负数透传给接口；有效值由后端按 virtual 字段处理。
+		normalizeVirtualCount(){
+			const count = Math.floor(Number(this.formData.virtual))
+			this.formData.virtual = Number.isFinite(count) && count > 0 ? count : 0
 		},
 		// 编辑器准备就绪
 		onEditorReady() {
@@ -1174,6 +1191,15 @@ export default {
 	color: #666;
 	text-align: right;
 	white-space: pre-line;
+}
+
+/* 团长填写的虚拟跟团数：与其他设置值保持右对齐，并使用数字键盘。 */
+.virtual-input {
+	width: 240rpx;
+	min-height: 64rpx;
+	font-size: 28rpx;
+	color: #666;
+	text-align: right;
 }
 
 .setting-arrow {

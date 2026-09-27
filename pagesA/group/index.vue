@@ -43,7 +43,7 @@
 				<text class="status-text" :class="item.statusInfo.tone">{{ item.statusInfo.text }}</text>
 				<view class="card-actions">
 					<view v-if="item.statusInfo.value === 1" class="outline-btn" @click.stop="shareLeaderGroupPosterImg(item)">生成海报</view>
-					<button class="outline-btn share-btn" open-type="share" :data-share="shareData(item)" @click.stop="shareLeaderGroupPoster(item)">分享</button>
+					<button class="outline-btn share-btn" open-type="share" :data-share="shareData(item)">分享</button>
 				</view>
 			</view>
 
@@ -64,23 +64,20 @@
 	</view>
 
 	<PosterImgDialog ref="imgDialogRef"></PosterImgDialog>
-	<PosterDialog ref="posterDialogRef" @poster="shareLeaderGroupPosterImg"></PosterDialog>
 </view>
 </template>
 
 <script>
 import PosterImgDialog from "./img.vue"
-import PosterDialog from "./poster.vue"
 import {
 	getLeaderGroupCount,
 	getLeaderGroupList,
-	makeLeaderGroupPoster,
-	shareLeaderGroupPoster as requestShareLeaderGroupPoster
+	makeLeaderGroupPoster
 } from "@/api/leader.js"
 import { getLeaderGroupCoverImages, normalizeLeaderGroup } from "@/utils/leaderGroup.js"
 
 export default {
-	components: { PosterDialog, PosterImgDialog },
+	components: { PosterImgDialog },
 	data() {
 		return {
 			leaderId: 0,
@@ -195,21 +192,14 @@ export default {
 			return min === max ? min : `${min}-${max}`
 		},
 		shareData(item) {
+			const activityLeaderId = Number(item.lid || item.leaderId || 0)
+			const params = [`id=${encodeURIComponent(item.id || '')}`]
+			// 没有活动归属时宁可省略 lid，让 C 端详情接口回填；不能写入当前 B 端操作者的 leader_lid。
+			if (activityLeaderId > 0) params.push(`lid=${encodeURIComponent(activityLeaderId)}`)
 			return {
 				title: item.name || '店小团',
 				imageUrl: item.img || 'https://shopgroup.obs.cn-north-9.myhuaweicloud.com/logo.png',
-				path: `/pages/group/index?id=${item.id}&lid=${item.lid || this.leaderId}`
-			}
-		},
-		async shareLeaderGroupPoster(item){
-			uni.showLoading({ title: '加载海报中...', mask: true })
-			try {
-				const res = await requestShareLeaderGroupPoster({ groupId:item.id })
-				this.$refs.posterDialogRef.show(item, res.data)
-			} catch (err) {
-				console.log('分享团购失败：', err)
-			} finally {
-				uni.hideLoading()
+				path: `/pages/group/index?${params.join('&')}`
 			}
 		},
 		async shareLeaderGroupPosterImg(item){

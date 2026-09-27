@@ -128,6 +128,8 @@ export function normalizeMemberHomeGroup(group = {}) {
 	const labelText = group.tagName || group.tag || group.label || group.labels || ''
 	const tagId = Number(group.tagId || group.tag_id || 0)
 	const tagColor = group.tagColor || group.tag_color || ''
+	const virtualOrderCount = Number(group.virtual || 0)
+	const actualOrderCount = Number(group.order || 0)
 	return {
 		id: Number(group.id || 0),
 		leaderId: Number(group.lid || group.leaderId || 0),
@@ -147,13 +149,14 @@ export function normalizeMemberHomeGroup(group = {}) {
 		// 卡片标签的渲染样式（切图/主色），见 getMemberHomeLabelStyle
 		labelStyle: getGroupLabelStyle(labelText, tagColor),
 		images: groupImages.length > 0 ? groupImages : goodsImages,
-		virtual: Number(group.virtual || 0),
-		order: Number(group.order || 0),
-		viewText: Number(group.virtual || group.num || 0),
-		// 跟团次数取接口的真实订单数（order/num2）；不能用预览记录条数 ——
-		// records 只是卡片上滚动的预览（条数受接口返回限制），会让「N次跟团」少报/变 0。
-		joinText: Number(group.order || group.num2 || 0),
-		joinNum: Number(group.order || group.num2 || 0),
+		virtual: virtualOrderCount,
+		order: actualOrderCount,
+		// 列表与详情均下发 viewCount，语义都是按用户去重的真实查看人数；不能误用 virtual。
+		viewText: Number(group.viewCount || 0),
+		// 详情的 num 口径为「真实支付订单 + 虚拟订单」，首页需保持一致。
+		// records 只是滚动预览，受返回条数限制，不能参与统计。
+		joinText: actualOrderCount + virtualOrderCount,
+		joinNum: actualOrderCount + virtualOrderCount,
 		timeText: group.timeText || group.time || group.createTimeText || group.startTimeText || '',
 		distanceText: group.distanceText || group.distance || '',
 		isClose,

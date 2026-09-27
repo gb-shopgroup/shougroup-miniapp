@@ -450,16 +450,8 @@ export default {
 		},
 		reportGroupView(group) {
 			const groupId = Number(group && group.id || 0)
-			const leaderId = Number(group && (group.leaderId || group.lid) || 0)
 			if (!groupId || !uni.getStorageSync('token')) return
 			reportMemberGroupView({ groupId })
-				.then(res => {
-					if (res && res.data === false) return
-					if (leaderId > 0) {
-						uni.setStorageSync(MEMBER_BOUND_LEADER_STORAGE_KEY, leaderId)
-						this.memberLeaderId = leaderId
-					}
-				})
 				.catch(err => {
 					console.log('团购浏览上报失败：', err)
 				})

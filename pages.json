@@ -139,10 +139,6 @@
 					"style": { "navigationBarTitleText": "团长-对账单", "navigationStyle": "custom" }
 				},
 				{ 
-					"path": "business/cash",
-					"style": { "navigationBarTitleText": "团长-提现日志", "navigationStyle": "custom" }
-				},
-				{ 
 					"path": "point/index",
 					"style": { "navigationBarTitleText": "团长-自提点", "navigationStyle": "custom" }
 				},
@@ -239,7 +235,7 @@
 				},
 				{ 
 					"path": "commission/index",
-					"style": { "navigationBarTitleText": "团长-分账/佣金/提现", "navigationStyle": "custom" }
+					"style": { "navigationBarTitleText": "团长-分账/佣金", "navigationStyle": "custom" }
 				},
 				{ 
 					"path": "report/index",

@@ -41,6 +41,12 @@ export function normalizeGroupCard(group) {
 	}
 }
 
+// 分享链接里的 lid 只是落地前的临时线索；详情接口返回的活动归属才是权威值。
+// 否则 B 端员工或错误历史链接会让二次转发把活动错误归到当前转发者名下。
+export function resolveActivityLeaderId(activity = {}, sharedLeaderId = 0) {
+	return Number(activity.lid || activity.leaderId || sharedLeaderId || 0)
+}
+
 export function filterGroupCardsByKeyword(groups, keyword) {
 	const value = typeof keyword === 'string' ? keyword.trim() : ''
 	const list = Array.isArray(groups) ? groups : []

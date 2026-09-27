@@ -171,16 +171,22 @@ export default {
 			return `成员${memberCount} | 跟团人次${joinTimes}`
 		},
 		shareData(){
+			const params = [`id=${encodeURIComponent(this.group.id || '')}`]
+			const activityLeaderId = Number(this.group.lid || this.group.leaderId || 0)
+			if (activityLeaderId > 0) params.push(`lid=${encodeURIComponent(activityLeaderId)}`)
 			return {
 				title: this.group.name,
 				imageUrl: this.group.img,
-				path: `/pages/group/index?id=${this.group.id}&lid=${this.group.lid}`
+				path: `/pages/group/index?${params.join('&')}`
 			}
 		},
 		timelineShareData(){
+			const activityLeaderId = Number(this.group.lid || this.group.leaderId || 0)
+			const query = [`id=${encodeURIComponent(this.group.id || '')}`]
+			if (activityLeaderId > 0) query.push(`lid=${encodeURIComponent(activityLeaderId)}`)
 			return {
 				title: this.group.name || this.leaderDisplayName,
-				query: `id=${this.group.id}&lid=${this.group.lid}`,
+				query: query.join('&'),
 				imageUrl: this.group.img || this.leaderAvatarSrc
 			}
 		},

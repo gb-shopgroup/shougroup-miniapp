@@ -55,11 +55,10 @@
 
 		<!-- 商品区 -->
 		<view class="section goods-section">
-			<view class="shop-row" @click="goGroupDetail">
+			<view class="shop-row">
 				<image class="shop-avatar" src="/static/image/head.png" mode="aspectFill"></image>
 				<text class="shop-name">{{ displayOrder.shopName || '团长店铺' }}</text>
 				<text class="group-name">{{ displayOrder.groupName || '团购活动' }}</text>
-				<text class="row-arrow">›</text>
 			</view>
 			<view v-if="displayOrder.goods.length == 0" class="goods-empty">暂无商品信息</view>
 			<view class="goods-row" v-for="goods in displayOrder.goods" :key="goods.id || goods.goodsId">

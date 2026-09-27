@@ -44,12 +44,24 @@ export function getGroupInfo(params) {
 	})
 }
 
-// C端用户进入团购详情时上报，用于服务端建立团长与团员的关联。
+// C端用户进入团购详情时上报活动浏览；会员绑定团长由 swapMemberLeader 单独处理。
 export function reportMemberGroupView(data = {}) {
 	return request({
 		url: '/order/group/groupActivity/view',
 		method: 'POST',
 		data: { groupId: Number(data.groupId || data.id || 0) }
+	})
+}
+
+// C端会员从分享入口进入活动后，切换其当前绑定的团长并返回最新会员信息。
+export function swapMemberLeader(data = {}) {
+	return request({
+		url: '/user/member/swap/getInfo',
+		method: 'POST',
+		data: {
+			openid: String(data.openid || ''),
+			leaderId: Number(data.leaderId || 0)
+		}
 	})
 }
 

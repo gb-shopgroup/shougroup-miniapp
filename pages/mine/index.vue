@@ -2,9 +2,12 @@
 <view class="container">
 	<view class="member-page">
 		<!-- 用户信息区 -->
-		<view class="user-header" :style="userHeaderStyle">
+		<view class="user-header" :style="userHeaderStyle" @click="goLogin">
 			<image class="user-avatar" :src="avatarSrc" mode="aspectFill" @error="handleAvatarLoadError"></image>
-			<text class="user-name">{{ userInfo.name || '登录' }}</text>
+			<view class="user-summary">
+				<text class="user-name">{{ isLoggedIn ? (userInfo.name || '个人中心') : '登录/注册' }}</text>
+				<text v-if="!isLoggedIn" class="guest-tip">登录后查看订单与团长工作台</text>
+			</view>
 		</view>
 
 		<!-- 常用功能区 -->
@@ -26,7 +29,7 @@
 				<text class="text">{{ switchRoleText || '团长切换' }}</text>
 			</view>
 		</view>
-		<view class="logout-btn" :class="{ disabled: loggingOut }" @click="logout">退出登录</view>
+		<view v-if="isLoggedIn" class="logout-btn" :class="{ disabled: loggingOut }" @click="logout">退出登录</view>
 	</view>
 </view>
 </template>
@@ -79,7 +82,8 @@ export default {
 			switchRoleText: '',
 			canSwitchLeaderConsole: false,
 			avatarFallbackUsed: false,
-			loggingOut: false
+			loggingOut: false,
+			isLoggedIn: false
 		}
 	},
 	computed: {
@@ -92,25 +96,41 @@ export default {
 			return `height: calc(${navHeight}px + 148rpx); padding-top: calc(${navHeight}px + 34rpx);`
 		}
 	},
-	onLoad() {
-		
-		// 用户首次登录
-		const token = uni.getStorageSync('token')
-		if (!token) { uni.redirectTo({ url: '/pages/login/index'}) }
-		
-		// 本地用户信息
-		this.userInfo = this.normalizeMemberInfo({
-			name: uni.getStorageSync('name'),
-			mobile: uni.getStorageSync('mobile'),
-			avatar: uni.getStorageSync('avatar')
-		})
-		
-		// 我的个人信息
-		this.initGetMemberInfo()
-		// 是否团长(需要实时访问,防止修改店员信息后无法更新)
-		this.initGetIsLeader()
+	onShow() {
+		this.refreshMemberSession()
 	},
 	methods: {
+		refreshMemberSession() {
+			this.isLoggedIn = !!uni.getStorageSync('token')
+			if (!this.isLoggedIn) {
+				this.userInfo = { name: '', phone: '', avatar: '' }
+				this.leaderId = ''
+				this.leaderRole = ''
+				this.switchRoleText = ''
+				this.canSwitchLeaderConsole = false
+				return
+			}
+			this.userInfo = this.normalizeMemberInfo({
+				name: uni.getStorageSync('name'),
+				mobile: uni.getStorageSync('mobile'),
+				avatar: uni.getStorageSync('avatar')
+			})
+			this.initGetMemberInfo()
+			this.initGetIsLeader()
+		},
+		goLogin() {
+			if (this.isLoggedIn) return
+			const url = '/pages/login/index'
+			uni.navigateTo({
+				url,
+				fail: () => uni.switchTab({ url: '/pages/index/index' })
+			})
+		},
+		requireMemberLogin() {
+			if (this.isLoggedIn) return true
+			this.goLogin()
+			return false
+		},
 		normalizeMemberInfo(member = {}) {
 			const source = member || {}
 			return {
@@ -169,6 +189,7 @@ export default {
 		},
 		// 去我的订单
 		goMyOrder() {
+			if (!this.requireMemberLogin()) return
 			uni.switchTab({ url: '/pages/order/index' })
 		},
 		showFeedbackHint() {
@@ -176,6 +197,7 @@ export default {
 		},
 		// 去团长控制台
 		goLeaderConsole() {
+			if (!this.requireMemberLogin()) return
 			if (!this.canSwitchLeaderConsole) {
 				uni.showToast({ title: '没有团长或员工权限', icon: 'none' })
 				return
@@ -205,7 +227,7 @@ export default {
 					} finally {
 						LOGIN_STORAGE_KEYS.forEach(key => uni.removeStorageSync(key))
 						this.loggingOut = false
-						uni.reLaunch({ url: '/pages/login/index' })
+						uni.switchTab({ url: '/pages/index/index' })
 					}
 				}
 			})
@@ -246,8 +268,21 @@ export default {
 
 .user-name {
 	font-size: 28rpx;
-	line-height: 96rpx;
+	line-height: 38rpx;
 	color: #1f1f1f;
+}
+
+.user-summary {
+	display: flex;
+	min-width: 0;
+	flex-direction: column;
+	gap: 8rpx;
+}
+
+.guest-tip {
+	font-size: 22rpx;
+	line-height: 30rpx;
+	color: #999;
 }
 
 .menu-section {

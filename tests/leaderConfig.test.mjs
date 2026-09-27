@@ -273,12 +273,6 @@ assert.equal(businessAddSource.includes('limitPricePrecision'), true)
 assert.equal(businessAddSource.includes('this.formData.tax = limitPricePrecision(this.formData.tax)'), true)
 assert.equal(businessAddSource.includes("if (!this.formData.tax)"), true)
 
-const addCashSource = fs.readFileSync(new URL('../pagesA/business/addCash.vue', import.meta.url), 'utf8')
-assert.equal(addCashSource.includes('v-model="formData.fee"'), true)
-assert.equal(addCashSource.includes('@input="onFeeInput"'), true)
-assert.equal(addCashSource.includes('limitPricePrecision'), true)
-assert.equal(addCashSource.includes('this.formData.fee = limitPricePrecision(this.formData.fee)'), true)
-
 const manifestSource = fs.readFileSync(new URL('../manifest.json', import.meta.url), 'utf8')
 assert.equal(manifestSource.includes('"requiredPrivateInfos"'), true)
 assert.equal(manifestSource.includes('"chooseLocation"'), true)
@@ -336,6 +330,8 @@ assert.equal(blackAddSource.includes('请先搜索团员'), true)
 
 const pagesJsonSource = fs.readFileSync(new URL('../pages.json', import.meta.url), 'utf8')
 assert.equal(pagesJsonSource.includes('"path": "black/add"'), true)
+assert.equal(pagesJsonSource.includes('"path": "business/cash"'), false)
+assert.equal(pagesJsonSource.includes('提现'), false)
 
 const dashboardSource = fs.readFileSync(new URL('../pagesA/dashboard/index.vue', import.meta.url), 'utf8')
 assert.equal(dashboardSource.includes('我的店铺'), true)

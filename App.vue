@@ -11,9 +11,9 @@ export default {
 	},
 	onLaunch: function() {
 		const openid = uni.getStorageSync('openid')
-		if(!openid) {
-			this.getWxOpenID()
-		}else{
+		const token = uni.getStorageSync('token')
+		// 首次游客打开首页不交换用户身份；等用户主动同意协议并登录时再获取 openid。
+		if(openid && token){
 			this.autoLogin(openid)
 		}
 		//console.log('App Launch')
@@ -25,7 +25,7 @@ export default {
 		//console.log('App Hide')
 	},
 	methods: {
-		// 获取openid
+		// 已登录用户的会话恢复。新用户的 openid 由登录页在协议确认后获取。
 		async getWxOpenID() {
 			try {
 				// 1. 获取微信code 无需按钮、无需授权、静默执行

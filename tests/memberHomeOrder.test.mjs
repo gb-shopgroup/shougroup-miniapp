@@ -36,6 +36,14 @@ import {
 	normalizeMemberOrder,
 	resolveMemberRefundFlag
 } from '../utils/memberOrder.js'
+import { resolveActivityLeaderId } from '../utils/groupPresentation.js'
+
+// 详情接口返回的活动归属优先于分享参数，防止历史错误链接在二次转发时扩散。
+assert.equal(resolveActivityLeaderId({}, 17), 17)
+assert.equal(resolveActivityLeaderId({ lid: 12 }, 17), 12)
+assert.equal(resolveActivityLeaderId({ lid: 12 }, 0), 12)
+assert.equal(resolveActivityLeaderId({ leaderId: 12 }, 17), 12)
+assert.equal(resolveActivityLeaderId({ leaderId: 12 }, 0), 12)
 
 assert.deepEqual(buildMemberHomeListPayload({ leaderId: '9', page: 2, pageSize: 10 }), {
 	leaderId: 9,
@@ -113,8 +121,9 @@ const homeGroup = normalizeMemberHomeGroup({
 	shopLogo: '/shop-logo.png',
 	info: '雪山天骄的新鲜牛肉',
 	tagName: '新品尝鲜',
-		virtual: 888,
-		order: 99,
+	virtual: 888,
+	order: 99,
+	viewCount: 3268,
 		timeText: '20分钟前',
 		isClose: 0,
 		startTime: 1780000000,
@@ -129,12 +138,13 @@ assert.equal(homeGroup.id, 6)
 assert.equal(homeGroup.leaderId, 9)
 assert.equal(homeGroup.leaderName, '云朵小店')
 assert.equal(homeGroup.leaderAvatar, '/shop-logo.png')
-assert.equal(homeGroup.viewText, 888)
-	// 跟团次数取接口的真实订单数（order: 99），不是预览记录条数（groupLogs 只有 2 条）
-	assert.equal(homeGroup.joinText, 99)
-	assert.equal(homeGroup.joinNum, 99)
-	// 预览记录仍来自 groupLogs
-	assert.equal(homeGroup.records.length, 2)
+// 列表的真实查看人数与详情同样取 viewCount，不能误用 virtual。
+assert.equal(homeGroup.viewText, 3268)
+// 跟团次数按详情的 num 口径：真实订单（99）+ 虚拟订单（888），不能使用预览记录条数。
+assert.equal(homeGroup.joinText, 987)
+assert.equal(homeGroup.joinNum, 987)
+// 预览记录仍来自 groupLogs
+assert.equal(homeGroup.records.length, 2)
 assert.equal(homeGroup.timeText, '20分钟前')
 assert.equal(homeGroup.label, '新品尝鲜')
 assert.equal(homeGroup.goods[0].name, '牛肉')
@@ -583,6 +593,8 @@ assert.equal(apiSource.includes('withGroupLogId'), false)
 assert.equal(apiSource.includes('withLogId'), true)
 assert.equal(apiSource.includes("url: '/order/group/groupActivity/view'"), true)
 assert.equal(apiSource.includes('export function reportMemberGroupView'), true)
+assert.equal(apiSource.includes("url: '/user/member/swap/getInfo'"), true)
+assert.equal(apiSource.includes('export function swapMemberLeader'), true)
 assert.equal(apiSource.includes("url: '/order/group/order/applyRefund/orderInfo'"), true)
 assert.equal(apiSource.includes("url: '/order/group/groupActivity/list'"), false)
 assert.equal(apiSource.includes("url: '/order/group/order/list'"), true)
@@ -609,6 +621,7 @@ const authSource = fs.readFileSync(new URL('../utils/auth.js', import.meta.url),
 assert.equal(authSource.includes("userInfo.wxAccessToken || userInfo.accessToken || userInfo.access_token"), true)
 assert.equal(authSource.includes("WX_ACCESS_TOKEN_STORAGE_KEY = 'wx_access_token'"), true)
 assert.equal(authSource.includes("MEMBER_BOUND_LEADER_STORAGE_KEY = 'member_bound_leader_id'"), true)
+assert.equal(authSource.includes('export function cacheMemberBoundLeaderId'), true)
 
 const homeSource = fs.readFileSync(new URL('../pages/index/index.vue', import.meta.url), 'utf8')
 assert.equal(homeSource.includes('getMemberGroupActivityList'), true)
@@ -616,7 +629,7 @@ assert.equal(homeSource.includes('getMemberGroupActivityLogs2'), false)
 assert.equal(homeSource.includes('getGroupShop'), true)
 assert.equal(homeSource.includes('reportMemberGroupView'), true)
 assert.equal(homeSource.includes('this.reportGroupView(group)'), true)
-assert.equal(homeSource.includes('uni.setStorageSync(MEMBER_BOUND_LEADER_STORAGE_KEY, leaderId)'), true)
+assert.equal(homeSource.includes('uni.setStorageSync(MEMBER_BOUND_LEADER_STORAGE_KEY, leaderId)'), false)
 assert.equal(homeSource.includes('MEMBER_BOUND_LEADER_STORAGE_KEY'), true)
 assert.equal(homeSource.includes("uni.getLocation({ type: 'gcj02'"), true)
 assert.equal(homeSource.includes("uni.getStorageSync('leader')"), false)
@@ -796,10 +809,7 @@ assert.equal(groupDetailSource.includes('normalizeMemberHomeRecord'), true)
 assert.equal(groupDetailSource.includes('normalizeGroupLogs(logs = [])'), true)
 assert.equal(groupDetailSource.includes('applyCachedGroupLogs()'), true)
 assert.equal(groupDetailSource.includes('this.applyCachedGroupLogs()'), true)
-assert.equal(groupDetailSource.includes('groupJoinCount()'), true)
 assert.equal(groupDetailSource.includes('applyGroupLogs(records = [])'), true)
-assert.equal(groupDetailSource.includes('groupLogsTotal: 0'), true)
-assert.equal(groupDetailSource.includes('this.groupLogsTotal = records.length'), true)
 assert.equal(groupDetailSource.includes('this.groupLogs = records'), true)
 assert.equal(groupDetailSource.includes('this.groupLogs = records.slice(0, 2)'), false)
 assert.equal(groupDetailSource.includes('const effectiveRecords = count > 0 ? records.slice(0, count) : records'), false)
@@ -808,7 +818,9 @@ assert.equal(groupDetailSource.includes('this.applyGroupLogs(logs)'), true)
 assert.equal(groupDetailSource.includes('addGroupLogs'), false)
 assert.equal(groupDetailSource.includes('startTimer'), false)
 assert.equal(groupDetailSource.includes('groupLogs2'), false)
-assert.equal(groupDetailSource.includes('{{ groupJoinCount }}次跟团'), true)
+assert.equal(groupDetailSource.includes('hasGroupIntroContent && (groupInfo.viewCount || groupInfo.num)'), true)
+assert.equal(groupDetailSource.includes('{{ groupInfo.viewCount || 0 }}人查看'), true)
+assert.equal(groupDetailSource.includes('{{ groupInfo.num || 0 }}次跟团'), true)
 assert.equal(groupDetailSource.includes('{{ groupLogs.length }}次跟团'), false)
 assert.equal(groupDetailSource.includes('return true'), true)
 assert.equal(groupDetailSource.includes('return false'), true)
@@ -826,6 +838,13 @@ assert.equal(groupDetailSource.includes('v-if="shopBanner"'), true)
 // label/tagName 是团购标签，不能当提货方式文案（旧实现有这个兜底，已移除）
 assert.equal(groupDetailSource.includes('if(this.groupInfo.label) return this.groupInfo.label'), false)
 assert.equal(groupDetailSource.includes('hasGroupIntroContent'), true)
+assert.equal(groupDetailSource.includes('activityLeaderId: 0'), true)
+assert.equal(groupDetailSource.includes('this.activityLeaderId = Number(options.lid || 0)'), true)
+assert.equal(groupDetailSource.includes('resolveActivityLeaderId(this.groupInfo, this.activityLeaderId)'), true)
+assert.equal(groupDetailSource.includes('resolveActivityLeaderId(this.groupInfo, this.activityLeaderId || this.leaderId)'), true)
+assert.equal(groupDetailSource.includes('`lid=${encodeURIComponent(this.getActivityLeaderId() || \'\')}`'), true)
+assert.equal(groupDetailSource.includes('swapMemberLeader({ openid, leaderId })'), true)
+assert.equal(groupDetailSource.includes('this.syncMemberBoundLeader()'), true)
 assert.equal(groupDetailSource.includes('compact-group-head'), true)
 assert.equal(groupDetailSource.includes('normalizeRichTextImages'), true)
 assert.equal(groupDetailSource.includes(':class="{ plain: !hasGroupRichText }"'), false)
@@ -840,7 +859,9 @@ assert.equal(groupCartSource.includes('getApp().globalData.sessionCheckoutOrderN
 assert.ok(groupCartSource.indexOf('this.clearSessionCheckout(orderNo)') > groupCartSource.indexOf('getApp().globalData.sessionCheckoutOrderNo = orderNo'))
 assert.ok(groupCartSource.indexOf('this.clearSessionCheckout(orderNo)') < groupCartSource.indexOf('await this.doPay(orderNo)'))
 assert.ok(groupCartSource.indexOf('this.clearSessionCheckout(orderNo)') < groupCartSource.indexOf('await uni.requestPayment({'))
-assert.equal(groupCartSource.includes('this.cartGoodsList = []'), true)
+assert.equal(groupCartSource.includes('createdOrderNo: \'\''), true)
+assert.equal(groupCartSource.includes('this.gotoOrderDetail(this.createdOrderNo)'), true)
+assert.equal(groupCartSource.includes('this.cartGoodsList = []'), false)
 assert.equal(groupCartSource.includes('ensureOpenId'), true)
 assert.equal(groupCartSource.includes("const title = (err && err.msg) || (err && err.message) || '支付失败'"), true)
 assert.equal(groupCartSource.includes('uni.hideLoading()'), true)
@@ -922,6 +943,7 @@ assert.equal(orderDetailSource.includes('removePayCache(this.orderInfo.orderNo)'
 assert.equal(orderDetailSource.includes('goGroupDetail()'), true)
 assert.equal(orderDetailSource.includes("`/pages/group/index?id=${groupId}&lid=${leaderId}`"), true)
 assert.equal(orderDetailSource.includes("'/pages/collection/index?lid='"), false)
+assert.equal(orderDetailSource.includes('<view class="shop-row" @click="goGroupDetail">'), false)
 assert.equal(orderDetailSource.includes('copyText(value)'), true)
 assert.equal(orderDetailSource.includes('callPhone(phone)'), true)
 assert.equal(orderDetailSource.includes("const token = uni.getStorageSync('token')"), true)

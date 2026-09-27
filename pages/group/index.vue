@@ -40,9 +40,9 @@
 		<text v-if="groupCreateTimeText">{{ groupCreateTimeText }} 发布</text>
 		<text class="end-time" v-if="groupEndTimeText">{{ groupEndTimeText }} 结束</text>
 	</view>
-		<view class="group-stat-line" v-if="hasGroupIntroContent && (groupInfo.num || groupJoinCount > 0)">
-			<text>{{ groupInfo.num || 0 }}人查看</text>
-			<text v-if="groupJoinCount > 0">{{ groupJoinCount }}次跟团</text>
+		<view class="group-stat-line" v-if="hasGroupIntroContent && (groupInfo.viewCount || groupInfo.num)">
+			<text>{{ groupInfo.viewCount || 0 }}人查看</text>
+			<text>{{ groupInfo.num || 0 }}次跟团</text>
 		</view>
 	<view class="group-rich-section" v-if="hasGroupIntroContent">
 		<view class="rich-content">
@@ -155,20 +155,24 @@
 import AddCart from "./add.vue"
 import CartDialog from "./cartDialog.vue"
 import parseHtml from "@/utils/html-parser.js"
-import { hasGroupIntroContent } from "@/utils/groupPresentation.js"
+import { hasGroupIntroContent, resolveActivityLeaderId } from "@/utils/groupPresentation.js"
 import { getCartQuantityForGoods, isGoodsSoldOut, normalizeGroupGoodsList, setCartGoodsQuantity, updateCartGoodsQuantity } from "@/utils/groupPurchase.js"
 import { formatGroupDateTime, normalizeRichTextImages } from "@/utils/leaderGroup.js"
 import { getGroupLabelStyle, isMemberGroupOnline, normalizeMemberHomeRecord, resolveMemberHomeLogsData } from "@/utils/memberHome.js"
+import { cacheMemberBoundLeaderId, cacheMemberLoginInfo, pickMemberBoundLeaderId } from "@/utils/auth.js"
 import { 
 	getGroupShop, 
 	getGroupInfo, 
 	getGroupGoodsList, 
 	getMemberGroupActivityLogs2,
-	isBackMember } from "@/api/group.js"
+	isBackMember,
+	swapMemberLeader } from "@/api/group.js"
 export default {
 	data() {
 		return {
 			leaderId : 0,
+			// 分享来源的活动归属团长。它与当前用户首页绑定的团长是两套状态，不能混用。
+			activityLeaderId: 0,
 			shopInfo: {},
 			groupId: 0,
 			groupInfo: {},
@@ -182,7 +186,6 @@ export default {
 			numFlag: 0,
 				// 跟团记录
 				groupLogs: [],
-				groupLogsTotal: 0,
 				pendingAddCartContext: null,
 			// 是否黑名单
 			isBlackMember: false
@@ -193,7 +196,8 @@ export default {
 		
 		// 页面跳转传递过来的
 		if(options.lid){
-			this.leaderId = options.lid
+			this.activityLeaderId = Number(options.lid || 0)
+			this.leaderId = this.activityLeaderId
 		}
 			if (options.id) {
 				this.groupId = options.id
@@ -208,7 +212,8 @@ export default {
 				params[k] = v
 			})
 			this.groupId = params.id
-			this.leaderId = params.lid
+			this.activityLeaderId = Number(params.lid || 0)
+			this.leaderId = this.activityLeaderId
 		}
 		
 		// 店铺信息
@@ -232,7 +237,7 @@ export default {
 		const title = product.name ? `${product.name} - ${groupName}` : groupName
 		const params = [
 			`id=${encodeURIComponent(this.groupId || '')}`,
-			`lid=${encodeURIComponent(this.leaderId || '')}`
+			`lid=${encodeURIComponent(this.getActivityLeaderId() || '')}`
 		]
 		if (goodsId > 0) params.push(`goodsId=${encodeURIComponent(goodsId)}`)
 		return {
@@ -274,10 +279,6 @@ export default {
 			groupEndTimeText(){
 				
 				return this.formatGroupTimeValue(this.groupInfo.endTime)
-			},
-			groupJoinCount(){
-				
-				return Number(this.groupLogsTotal || 0)
 			},
 			displayGoods(){
 			
@@ -408,9 +409,13 @@ export default {
 				const param = {id:this.groupId}
 				const res = await getGroupInfo(param)
 				this.groupInfo = this.mergeGroupInfoWithCache(res.data || {})
-				if(!this.leaderId && (this.groupInfo.lid || this.groupInfo.leaderId)){
-					this.leaderId = this.groupInfo.lid || this.groupInfo.leaderId
+				const activityLeaderId = resolveActivityLeaderId(this.groupInfo, this.activityLeaderId)
+				if (activityLeaderId > 0) {
+					this.activityLeaderId = activityLeaderId
+					this.leaderId = activityLeaderId
 					this.initGroupShop()
+					this.syncMemberBoundLeader()
+					if (uni.getStorageSync('token')) this.initIsBackMember()
 				}
 				// 初始化商品列表
 				this.initGroupGoodsList()
@@ -418,7 +423,27 @@ export default {
 				console.log('获取团购详情失败：', err)
 			}
 		},
-			getCachedGroupInfo(){
+		getActivityLeaderId(){
+			return Number(resolveActivityLeaderId(this.groupInfo, this.activityLeaderId || this.leaderId) || 0)
+		},
+		async syncMemberBoundLeader(){
+			const leaderId = this.getActivityLeaderId()
+			const openid = String(uni.getStorageSync('openid') || '')
+			if (!leaderId || !openid || !uni.getStorageSync('token')) return
+			try {
+				const res = await swapMemberLeader({ openid, leaderId })
+				const member = res.data || {}
+				const latestLeaderId = pickMemberBoundLeaderId(member) || leaderId
+				cacheMemberLoginInfo(Object.assign({}, member, {
+					token: member.token || uni.getStorageSync('token'),
+					leaderId: latestLeaderId
+				}))
+				cacheMemberBoundLeaderId(latestLeaderId)
+			} catch (err) {
+				console.log('切换会员绑定团长失败：', err)
+			}
+		},
+		getCachedGroupInfo(){
 				const app = getApp()
 				const map = app.globalData.sessionGroupDetailMap || {}
 				return map[this.groupId] || {}
@@ -432,7 +457,6 @@ export default {
 			},
 			applyGroupLogs(records = []){
 				
-				this.groupLogsTotal = records.length
 				this.groupLogs = records
 			},
 		mergeGroupInfoWithCache(detail = {}){

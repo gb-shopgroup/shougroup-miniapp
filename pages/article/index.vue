@@ -1,13 +1,9 @@
 <template>
-<view class="container">
-<!--********************************************************-->
-<view class="home-header">
-	<view class="header-logo">
-	<text class="logo-text">店小团</text>
-	<text class="logo-sub">团购平台</text>
-	</view>
+<view class="container" :style="miniNavPageStyle()">
+<view class="article-nav" :style="miniNavBarStyle()">
+	<image class="nav-back" :style="miniNavTitleStyle()" src="/static/image/nav-back.png" mode="aspectFit" @click="goBack"></image>
+	<text class="article-nav-title" :style="miniNavTitleStyle()">{{ article.title || '协议详情' }}</text>
 </view>
-<!--********************************************************-->
 <view class="page">
 	<view class="title">{{article.title}}</view>
 	<view class="content"><rich-text :nodes="article.content"></rich-text></view>
@@ -35,6 +31,13 @@ export default {
 		}
 	},
 	methods: {
+		goBack() {
+			if (getCurrentPages().length > 1) {
+				uni.navigateBack({ delta: 1 })
+				return
+			}
+			uni.switchTab({ url: '/pages/index/index' })
+		},
 		// 获取文章详情
 		async initArticleInfo(articleId) {
 			try {
@@ -51,6 +54,40 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+.container {
+	min-height: 100vh;
+	background: #fff;
+}
+
+.article-nav {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	z-index: 10;
+	background: #fff;
+}
+
+.nav-back {
+	position: absolute;
+	left: 28rpx;
+	width: 38rpx;
+	height: 38rpx;
+}
+
+.article-nav-title {
+	position: absolute;
+	left: 140rpx;
+	right: 140rpx;
+	font-size: 32rpx;
+	font-weight: 500;
+	color: #222;
+	text-align: center;
+}
+
+.page {
+	padding: 0 32rpx 48rpx;
+}
 
 .title {
 	

@@ -11,7 +11,7 @@
 		<text class="point-arrow">›</text>
 	</view>
 	<view class="point-address">{{ selectedPointAddress }}</view>
-	<view class="goods-panel" v-if="cartGoodsList.length > 0">
+	<view class="goods-panel" v-if="isCheckoutReady && cartGoodsList.length > 0">
 		<view class="checkout-goods" v-for="(item, index) in cartGoodsList" :key="item.id + '-' + (item.skuids || index)">
 			<image class="goods-img" :src="item.img" mode="aspectFill"></image>
 			<view class="goods-info">
@@ -26,7 +26,7 @@
 			</view>
 		</view>
 	</view>
-	<view class="empty-cart" v-else>
+	<view class="empty-cart" v-else-if="isCheckoutReady">
 		<view class="empty-cart-icon">
 			<image src="/static/tabbar/cart.png" mode="aspectFit"></image>
 		</view>
@@ -86,6 +86,8 @@ export default {
 			// 商品列表
 			cartGoodsList: [],
 			originalCheckoutGoodsList: [],
+			// 防止页面首次渲染时把尚未恢复的结算快照误显示为“购物车暂无商品”。
+			isCheckoutReady: false,
 			// 提货点列表
 			pointList: [],
 			// 订单接口要求真实自提点 ID，不使用列表下标。
@@ -95,6 +97,8 @@ export default {
 			mobile: '',
 			remark: '',
 			isRequesting: false ,// 请求锁，防止重复调用
+			// 订单已创建后保留当前页商品快照，等待支付结果或跳转订单详情。
+			createdOrderNo: '',
 			refreshFlag: false // 刷新标记
 		}
 	},
@@ -115,6 +119,7 @@ export default {
 			? app.globalData.sessionCheckoutGoodsList
 			: (app.globalData.sessionCartGoodsList || [])
 		this.originalCheckoutGoodsList = this.cartGoodsList.map(item => Object.assign({}, item))
+		this.isCheckoutReady = true
 		
 		// 初始化提货点列表
 		this.initGroupPoint()
@@ -224,6 +229,10 @@ export default {
 		},		
 		// 下单事件
 		async submitOrder() {
+			if(this.createdOrderNo){
+				this.gotoOrderDetail(this.createdOrderNo)
+				return
+			}
 						
 			// 获取提货点ID
 			let pointId = 0
@@ -293,6 +302,7 @@ export default {
 					uni.showToast({ title: '下单接口未返回订单编号', icon: 'none' })
 					return
 				}
+				this.createdOrderNo = orderNo
 				getApp().globalData.sessionCheckoutOrderNo = orderNo
 				this.clearSessionCheckout(orderNo)
 				
@@ -367,13 +377,12 @@ export default {
 				uni.hideLoading()
 				if(payParams == null){
 					if(!err.silentToast) uni.showToast({ title, icon: 'none', duration: 2500 })
+					this.gotoOrderDetail(orderNo)
 					return
 				}
 				// 支付参数缓存到本地（便于订单详情页继续支付）
 				savePayCache(orderNo, payParams)
-				const gotoOrderDetail = () => {
-					uni.redirectTo({ url: '/pages/order/detail?orderNo=' + encodeURIComponent(orderNo)})
-				}
+				const gotoOrderDetail = () => this.gotoOrderDetail(orderNo)
 				if(err.silentToast){
 					// 静默错误：调用方已提示过，直接进订单详情
 					gotoOrderDetail()
@@ -415,7 +424,12 @@ export default {
 		clearSessionCheckout(orderNo){
 			const app = getApp()
 			Object.assign(app.globalData, clearPaidCheckoutSessionState(app.globalData, orderNo))
-			this.cartGoodsList = []
+			// 待支付订单已生成，购物车会话需要立即清空；但当前结算页仍要保留快照，
+			// 否则支付请求尚未结束时会瞬间显示“购物车暂无商品”。
+		},
+		gotoOrderDetail(orderNo){
+			if(!orderNo) return
+			uni.redirectTo({ url: '/pages/order/detail?orderNo=' + encodeURIComponent(orderNo)})
 		},
 		syncSessionCheckout(){
 			const app = getApp()

@@ -25,8 +25,8 @@ switch (version) {
 		env = 'development'
 		break
 	case 'trial':
-		// 微信小程序-体验版
-		env = 'test'
+		// 微信小程序-体验版及审核包。审核需要看到真实可体验的运营内容。
+		env = 'production'
 		break
 	case 'release':
 		// 微信小程序-正式版

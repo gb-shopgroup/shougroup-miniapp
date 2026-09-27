@@ -188,41 +188,6 @@ export function getLeaderOrderBusinessList(data) {
 	return getLeaderBillList(data)
 }
 
-// 提现日志列表
-// export function getLeaderCashList(params) {
-// 	return request2({
-// 		url: '/leader/business/cash/list',
-// 		method: 'GET',
-// 		data: params
-// 	})
-// }
-
-// 提现日志总数
-// export function getLeaderCashCount(params) {
-// 	return request2({
-// 		url: '/leader/business/cash/count',
-// 		method: 'GET',
-// 		data: params
-// 	})
-// }
-
-// 添加提现
-// export function addLeaderCash(data) {
-// 	return request2({
-// 		url: '/leader/business/cash/add',
-// 		method: 'POST',
-// 		data: data
-// 	})
-// }
-
-// 银行列表
-// export function getLeaderBankList(params) {
-// 	return request2({
-// 		url: '/leader/business/bank',
-// 		method: 'GET',
-// 		data: params
-// 	})
-// }
 
 // 银行卡列表
 // export function getLeaderBankNoList(params) {

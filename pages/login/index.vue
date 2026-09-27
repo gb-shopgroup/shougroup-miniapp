@@ -1,11 +1,12 @@
 <template>
-<view class="login-page" :style="miniNavPageStyle()">
-	<view class="nav-title" :style="miniNavBarStyle()">
-		<text :style="miniNavTitleStyle()">登录</text>
-	</view>
+	<view class="login-page" :style="miniNavPageStyle()">
+		<view class="nav-title" :style="miniNavBarStyle()">
+			<image class="nav-back" :style="miniNavTitleStyle()" src="/static/image/nav-back.png" mode="aspectFit" @click="goBack"></image>
+			<text :style="miniNavTitleStyle()">登录</text>
+		</view>
 
-	<view class="login-content">
-		<button class="login-avatar" open-type="chooseAvatar" @chooseavatar="onChooseAvatar">
+		<view class="login-content">
+			<button class="login-avatar" :open-type="isAgreementAccepted ? 'chooseAvatar' : ''" @click="handlePrivacyAction('avatar')" @chooseavatar="onChooseAvatar">
 			<image :src="avatarUrl" mode="aspectFill"></image>
 		</button>
 		<view class="avatar-tip">获取头像</view>
@@ -13,24 +14,46 @@
 		<view class="login-form">
 			<view class="field-row nickname-row">
 				<view class="field-icon">名</view>
-				<input type="nickname" id="nickname" v-model="nickname" placeholder="陌陌摸摸毛" @blur="onGetNickName" @confirm="onGetNickName" />
+				<input type="nickname" id="nickname" v-model="nickname" placeholder="昵称" @blur="onGetNickName" @confirm="onGetNickName" />
 				<view v-if="nickname" class="field-check">✓</view>
 			</view>
 
-			<button class="field-row phone-row" open-type="getPhoneNumber" @getphonenumber="onGetPhoneNumber">
+			<button class="field-row phone-row" :open-type="isAgreementAccepted ? 'getPhoneNumber' : ''" @click="handlePrivacyAction('phone')" @getphonenumber="onGetPhoneNumber">
 				<view class="field-icon">号</view>
 				<input type="text" :disabled="true" v-model="mobile" placeholder="手机号" />
 			</button>
 		</view>
 
-		<view class="auth-hint">请完成授权以继续使用</view>
+		<view class="auth-hint">请完成信息后登录</view>
+		<view class="protocol-row">
+			<view class="agreement-control" @click="toggleAgreement">
+				<checkbox class="agreement-checkbox" :checked="isAgreementAccepted" color="#16a56a"></checkbox>
+				<text>我已阅读并同意</text>
+			</view>
+			<text class="link" @click.stop="gotoArticle(1)">《用户服务协议》</text>
+			<text>与</text>
+			<text class="link" @click.stop="gotoArticle(2)">《隐私政策》</text>
+		</view>
 		<button class="btn-login" type="primary" @click="submitUserInfo()">
 			<text>登录</text>
 		</button>
+		<view class="skip-login" @click="goBack">暂不登录</view>
 	</view>
 
-	<view class="protocol-tip">
-		登陆即同意<text class="link" @click="gotoArticle(1)">用户服务协议</text>与<text class="link" @click="gotoArticle(2)">隐私授权</text>
+	<view v-if="showAgreementModal" class="agreement-overlay">
+		<view class="agreement-modal">
+			<text class="agreement-title">温馨提示</text>
+			<view class="agreement-content">
+				<text>请您仔细阅读并充分理解相关条款，点击同意即代表您已阅读并同意</text>
+				<text class="link" @click="gotoArticle(1)">《用户服务协议》</text>
+				<text>与</text>
+				<text class="link" @click="gotoArticle(2)">《隐私政策》</text>
+			</view>
+			<view class="agreement-actions">
+				<button class="agreement-button reject" @click="rejectAgreement">不同意</button>
+				<button class="agreement-button accept" @click="acceptAgreement">同意</button>
+			</view>
+		</view>
 	</view>
 </view>
 </template>
@@ -48,6 +71,9 @@ export default {
 			mobile: '',
 			avatarUrl: '/static/image/head.png',
 			avatarUploaded: false,
+			isAgreementAccepted: false,
+			showAgreementModal: false,
+			pendingAgreementAction: '',
 			isRequesting: false, // 请求锁，防止重复调用
 			pendingScene: '' // 扫码进入待登录的 scene（如门店核销码 shopId=4），登录成功后回跳
 		}
@@ -67,13 +93,34 @@ export default {
 			this.pendingScene = options.scene
 		}
 		
-		// 已有openid直接使用, 没有openid重新获取
-		const openid = uni.getStorageSync('openid')
-		if (!openid) { this.getOpenId() }
 	},
 	methods: {
+		toggleAgreement() {
+			this.isAgreementAccepted = !this.isAgreementAccepted
+		},
+		handlePrivacyAction(action) {
+			if (this.isAgreementAccepted) return
+			this.pendingAgreementAction = action
+			this.showAgreementModal = true
+		},
+		acceptAgreement() {
+			this.isAgreementAccepted = true
+			const action = this.pendingAgreementAction
+			this.pendingAgreementAction = ''
+			this.showAgreementModal = false
+			// 头像和手机号均要求真实用户手势，确认协议后请用户再次点击对应授权控件。
+			if (action === 'submit') this.$nextTick(() => this.submitUserInfo())
+		},
+		rejectAgreement() {
+			this.pendingAgreementAction = ''
+			this.showAgreementModal = false
+		},
 		// 微信获取手机号回调
 		async onGetPhoneNumber(e) {
+			if (!this.isAgreementAccepted) {
+				this.handlePrivacyAction('phone')
+				return
+			}
 			
 			// 拒绝授权
 			if (e.detail.errMsg !== "getPhoneNumber:ok") {
@@ -93,6 +140,10 @@ export default {
 		},
 		// 获取用户头像回调
 		async onChooseAvatar(e) {
+			if (!this.isAgreementAccepted) {
+				this.handlePrivacyAction('avatar')
+				return
+			}
 			
 			// 微信返回的头像临时路径
 			const tempAvatarPath = e.detail.avatarUrl;
@@ -165,6 +216,11 @@ export default {
 		},
 		// 注册新用户
 		async submitUserInfo() {
+			if (!this.isAgreementAccepted) {
+				this.pendingAgreementAction = 'submit'
+				this.showAgreementModal = true
+				return
+			}
 			if (!this.avatarUploaded) {
 				uni.showToast({ title: '请获取头像', icon: 'none' })
 				return
@@ -236,6 +292,13 @@ export default {
 				fail: () => { uni.redirectTo({ url }) }
 			})
 		},
+		goBack() {
+			if (getCurrentPages().length > 1) {
+				uni.navigateBack({ delta: 1 })
+				return
+			}
+			uni.switchTab({ url: '/pages/index/index' })
+		},
 		// 去首页
 		gotoHome(){
 			
@@ -274,9 +337,16 @@ export default {
 	}
 }
 
+.nav-back {
+	position: absolute;
+	left: 28rpx;
+	width: 38rpx;
+	height: 38rpx;
+}
+
 .login-content {
 	flex: 1;
-	padding: 126rpx 52rpx 0;
+	padding: 126rpx 52rpx 72rpx;
 	box-sizing: border-box;
 	display: flex;
 	flex-direction: column;
@@ -376,7 +446,7 @@ export default {
 }
 
 .auth-hint {
-	margin-top: 52rpx;
+	margin-top: 32rpx;
 	font-size: 26rpx;
 	color: #999;
 	text-align: center;
@@ -385,7 +455,7 @@ export default {
 .btn-login {
 	width: 528rpx;
 	height: 92rpx;
-	margin-top: 64rpx;
+	margin-top: 52rpx;
 	background: #26c160;
 	color: #fff;
 	font-size: 30rpx;
@@ -400,17 +470,107 @@ export default {
 	border: none;
 }
 
-.protocol-tip {
-	position: absolute;
-	left: 0;
-	right: 0;
-	bottom: 74rpx;
+
+.protocol-row {
+	width: 540rpx;
+	margin-top: 26rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-wrap: wrap;
+	gap: 4rpx;
 	font-size: 24rpx;
 	color: #666;
-	text-align: center;
+}
+
+.agreement-control {
+	display: flex;
+	align-items: center;
+	gap: 4rpx;
+	white-space: nowrap;
+}
+
+.agreement-checkbox {
+	transform: scale(.76);
+	transform-origin: right center;
 }
 
 .link {
 	color: #26c160;
+}
+
+.skip-login {
+	margin-top: 28rpx;
+	font-size: 26rpx;
+	line-height: 38rpx;
+	color: #777;
+}
+
+.agreement-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 100;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 48rpx;
+	box-sizing: border-box;
+	background: rgba(0, 0, 0, .48);
+}
+
+.agreement-modal {
+	width: 100%;
+	max-width: 620rpx;
+	padding: 48rpx 42rpx 42rpx;
+	box-sizing: border-box;
+	border: 5rpx solid #16a56a;
+	border-radius: 42rpx;
+	background: #fff;
+}
+
+.agreement-title {
+	display: block;
+	font-size: 36rpx;
+	line-height: 50rpx;
+	font-weight: 600;
+	color: #252525;
+	text-align: center;
+}
+
+.agreement-content {
+	margin-top: 36rpx;
+	font-size: 28rpx;
+	line-height: 44rpx;
+	color: #333;
+}
+
+.agreement-actions {
+	display: flex;
+	gap: 30rpx;
+	margin-top: 46rpx;
+}
+
+.agreement-button {
+	flex: 1;
+	height: 82rpx;
+	margin: 0;
+	border-radius: 44rpx;
+	font-size: 30rpx;
+	line-height: 82rpx;
+}
+
+.agreement-button::after {
+	border: none;
+}
+
+.agreement-button.reject {
+	border: 1rpx solid #d9d9d9;
+	background: #fff;
+	color: #555;
+}
+
+.agreement-button.accept {
+	background: #16a56a;
+	color: #fff;
 }
 </style>
