@@ -23,6 +23,7 @@ export default {
 			showModal: false,
 			item: {
 				id: 0,
+				goodsId: 0,
 				lid: 0,
 				name: '',
 				img: ''
@@ -44,18 +45,21 @@ export default {
 	methods: {
 		show(data, url){
 			this.item.id = data.id
+			this.item.goodsId = data.goodsId || 0
 			this.item.lid = data.lid || data.leaderId || 0
 			this.item.name = data.name
 			this.item.img = url || data.img || ''
 			this.showModal = true
 		},
 		emitPoster(){
-			this.$emit('poster', this.item)
+			// 关闭弹窗会清空 item，事件传快照以保留当前商品上下文。
+			this.$emit('poster', { ...this.item })
 			this.closeModal()
 		},
 		closeModal() {
 			this.showModal = false
 			this.item.id = 0
+			this.item.goodsId = 0
 			this.item.lid = 0
 			this.item.name = ''
 			this.item.img = ''

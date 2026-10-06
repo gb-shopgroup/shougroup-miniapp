@@ -541,6 +541,15 @@ export function shareLeaderGroupPoster(params) {
 	})
 }
 
+// 商品海报两个 ID 均为 Query 参数，POST body 保持为空。
+export function shareLeaderGroupGoodsPoster({ groupId, goodsId }) {
+	return request2({
+		url: queryUrl('/goods/Leader/share/groupActivity/goods/poster', { groupId, goodsId }),
+		method: 'POST',
+		data: {}
+	})
+}
+
 // 分享团购活动海报（带有logo的海报）
 export function makeLeaderGroupPoster(params) {
 	return request2({

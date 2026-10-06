@@ -56,7 +56,7 @@
 					<text class="goods-name">{{ goods.gname }}</text>
 					<text class="goods-price">¥ {{ goods.price }}</text>
 				</view>
-				<view class="goods-share" @click.stop="openShareSheet">
+				<view class="goods-share" @click.stop="openShareSheet(goods)">
 					<image class="goods-share-icon" src="/static/image/leader_group_share.png" mode="aspectFit"></image>
 				</view>
 			</view>
@@ -123,7 +123,7 @@ import {
 	closeLeaderGroupInfo,
 	getLeaderGroupInfo,
 	makeLeaderGroupPoster,
-	shareLeaderGroupPoster as requestShareLeaderGroupPoster
+	shareLeaderGroupGoodsPoster
 } from '@/api/leader.js'
 import { getLeaderGroupManageActions, normalizeLeaderGroup, normalizeRichTextImages } from '@/utils/leaderGroup.js'
 
@@ -134,7 +134,8 @@ export default {
 			groupId: 0,
 			group: normalizeLeaderGroup({}),
 			manageSheetVisible: false,
-			isRequesting: false
+			isRequesting: false,
+			shareLoading: false
 		}
 	},
 	computed: {
@@ -196,7 +197,10 @@ export default {
 	},
 	onLoad(options) {
 		this.groupId = Number(options.id || 0)
-		this.initDetail()
+	},
+	onShow() {
+		// 编辑保存后返回会复用详情页，onLoad 不会重跑；统一在显示时拉取，关闭的团也能展示新增商品。
+		if (this.groupId > 0) this.initDetail()
 	},
 	onShareAppMessage(res) {
 		if (res.from === 'button') return res.target.dataset.share
@@ -293,14 +297,20 @@ export default {
 				}
 			})
 		},
-		async openShareSheet(){
+		async openShareSheet(goods){
+			if(this.shareLoading || !this.group.id || !goods || !goods.gid) return
+			this.shareLoading = true
 			uni.showLoading({ title: '加载海报中...', mask: true })
 			try {
-				const res = await requestShareLeaderGroupPoster({ groupId: this.group.id })
-				this.$refs.posterDialogRef.show(this.group, res.data)
+				// 点击行的 gid 是商品 ID；不能传团购商品关联 ID，也不能回退整团封面。
+				const res = await shareLeaderGroupGoodsPoster({ groupId: this.group.id, goodsId: goods.gid })
+				if (typeof res.data !== 'string' || !res.data.trim()) throw new Error('商品海报为空')
+				this.$refs.posterDialogRef.show({ ...this.group, goodsId: goods.gid, name: goods.gname || this.group.name }, res.data)
 			} catch (err) {
 				console.log('打开分享失败：', err)
+				uni.showToast({ title: '商品分享图加载失败，请重试', icon: 'none' })
 			} finally {
+				this.shareLoading = false
 				uni.hideLoading()
 			}
 		},
@@ -318,6 +328,11 @@ export default {
 			}
 		},
 		async shareLeaderGroupPosterImg(item){
+			// 商品分享弹窗已经取得对应商品图，预览直接复用，避免再生成整团海报。
+			if(item.goodsId){
+				this.$refs.imgDialogRef.show(item.img)
+				return
+			}
 			uni.showLoading({ title: '生成海报中...', mask: true })
 			try {
 				const res = await makeLeaderGroupPoster({ groupId: item.id })
