@@ -583,6 +583,20 @@ export function normalizeLeaderRefundApplyList(data) {
 	}
 }
 
+// approve/list 没有申请状态、申请金额或 refundFlag，不能套用 applyList 的 DTO。
+// 本入口的展示和提交都取返回行的 refundNum，金额统一按单价计算到分。
+export function normalizeLeaderBatchRefundList(data) {
+	return (Array.isArray(data) ? data : []).map(row => {
+		const order = normalizeLeaderOrder(row)
+		order.goods = order.goods.map(goods => ({
+			...goods,
+			currentRefundNum: Number(goods.refundNum || 0),
+			currentRefundAmount: Number((Number(goods.price || 0) * Number(goods.refundNum || 0)).toFixed(2))
+		}))
+		return order
+	})
+}
+
 // 【三个审核入口共用】依据「订单 + 本次申请记录」构造审核选择集。
 // 申请原文 refundGoodsMsg 里带的是本次申请的数量/金额（文档口径与审核一致），优先用它；
 // 解析不出来时退回订单商品行里的可退款项，避免出现空 refundGoodsMap。
@@ -687,7 +701,7 @@ export function buildBatchRefundSummary(selection = {}) {
 	}
 }
 
-export function buildRefundApprovalPayload({ selection = {}, order, goods, status = REFUND_APPROVE_STATUS.AGREE, reason = '' } = {}) {
+export function buildRefundApprovalPayload({ selection = {}, order, goods, status = REFUND_APPROVE_STATUS.AGREE, reason = '', type } = {}) {
 	const source = Object.keys(selection).length > 0
 		? selection
 		: toggleRefundSelection({}, order || {}, goods || {}, true)
@@ -704,6 +718,8 @@ export function buildRefundApprovalPayload({ selection = {}, order, goods, statu
 		}
 	})
 	const payload = { refundOrderGoodsMap, status: Number(status) }
+	// 来源由批量入口显式指定，单笔审核以及拒绝不能带入批量同意语义。
+	if (Number(status) === REFUND_APPROVE_STATUS.AGREE && type === 1) payload.type = 1
 	if (Number(status) === REFUND_APPROVE_STATUS.REJECT) payload.reason = reason || ''
 	return payload
 }

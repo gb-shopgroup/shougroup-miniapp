@@ -124,7 +124,7 @@
 				},
 				{ 
 					"path": "dashboard/index",
-					"style": { "navigationBarTitleText": "团长-控制台", "navigationStyle": "custom" }
+					"style": { "navigationBarTitleText": "团长-控制台", "navigationStyle": "custom", "enablePullDownRefresh": true }
 				},
 				{ 
 					"path": "business/index",

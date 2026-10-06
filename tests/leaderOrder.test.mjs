@@ -792,7 +792,7 @@ assert.equal(leaderOrderUtilSource.includes("verifyRecords: normalizeLeaderVerif
 
 // ===== 关键操作失败提示：请求层静默 + 页面 modal（金额/核销类必须让团长看清后端原文）=====
 const batchRefundSource = fs.readFileSync(new URL('../pagesA/order/refund.vue', import.meta.url), 'utf8')
-assert.equal(batchRefundSource.includes('approveLeaderRefundOrder(buildRefundApprovalPayload({ selection: this.selection, status: REFUND_APPROVE_STATUS.AGREE }), { silentToast: true })'), true)
+assert.equal(batchRefundSource.includes('approveLeaderRefundOrder(buildRefundApprovalPayload({ selection: this.selection, status: REFUND_APPROVE_STATUS.AGREE, type: 1 }), { silentToast: true })'), true)
 assert.equal(batchRefundSource.includes("showActionError(pickActionErrorMessage(err, '退款失败'), { title: '退款失败' })"), true)
 const refundDetailApproveSource = fs.readFileSync(new URL('../pagesA/order/refundDetail.vue', import.meta.url), 'utf8')
 assert.equal(refundDetailApproveSource.includes('approveLeaderRefundOrder(payload, { silentToast: true })'), true)
@@ -1027,9 +1027,9 @@ assert.equal(refundPageSource.includes("approveLeaderRefundOrder"), true)
 assert.equal(refundPageSource.includes("REFUND_APPROVE_STATUS.AGREE"), true)
 assert.equal(refundPageSource.includes("goRefundDetail"), true)
 assert.equal(refundPageSource.includes("/pagesA/order/refundDetail"), true)
-// 批量退款列表已切到新接口 POST /order/leader/refund/applyList
-assert.equal(refundPageSource.includes("getLeaderRefundApplyList({"), true)
-assert.equal(refundPageSource.includes("normalizeLeaderRefundApplyList(res.data)"), true)
+// 批量退款使用独立的订单数组 DTO，普通售后申请接口保留。
+assert.equal(refundPageSource.includes("getLeaderApproveList({"), true)
+assert.equal(refundPageSource.includes("normalizeLeaderBatchRefundList(res.data)"), true)
 assert.equal(refundPageSource.includes("buildLeaderRefundListRequest"), false)
 assert.equal(refundPageSource.includes("applyStatus: 1"), false)
 

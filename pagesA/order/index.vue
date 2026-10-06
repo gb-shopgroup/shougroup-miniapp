@@ -80,13 +80,19 @@
 
 		<view class="tabs">
 			<view v-for="tab in mainTabs" :key="tab.key" class="tab" :class="{ active: activeMainTab === tab.key }" @click="switchMainTab(tab.key)">
-				{{ tab.text }}
+				<view class="tab-label">
+					{{ tab.text }}
+					<text v-if="tab.key === 'refund' && refundCount > 0" class="refund-badge">{{ refundCount > 99 ? '99+' : refundCount }}</text>
+				</view>
 			</view>
 		</view>
 
 		<view v-if="currentSubTabs.length" :key="'sub-tabs-' + activeMainTab" class="sub-tabs">
 			<view v-for="tab in currentSubTabs" :key="activeMainTab + '-' + tab.key" class="sub-tab" :class="{ active: isActiveSubTab(tab.key) }" @click="switchSubTab(tab.key)">
-				{{ tab.text }}
+				<view class="tab-label">
+					{{ tab.text }}
+					<text v-if="activeMainTab === 'refund' && tab.key === 'pending' && refundCount > 0" class="refund-badge">{{ refundCount > 99 ? '99+' : refundCount }}</text>
+				</view>
 			</view>
 		</view>
 
@@ -212,6 +218,7 @@ import {
 	getLeaderOrderInfo,
 	getLeaderOrderList,
 	getLeaderRefundOrderList,
+	getLeaderRefundCount,
 	getSummaryOrderGoodsInfo,
 	getSummaryOrderInfo,
 	scanLeaderOrderQRCode
@@ -283,7 +290,9 @@ export default {
 			hasMore: false,
 			loading: false,
 			pageReady: false,
-			pendingLaunchScan: null
+			pendingLaunchScan: null,
+			refundCount: 0,
+			refundCountRequestId: 0
 		}
 	},
 	onShow() {
@@ -572,7 +581,24 @@ export default {
 		async refreshOrders(callback) {
 			this.page = 1
 			this.orderList = []
-			await this.loadOrders(callback)
+			// 待处理售后数是团长全局口径，不随订单筛选或当前分页计算。
+			try {
+				await Promise.all([this.loadOrders(), this.loadRefundCount()])
+			} finally {
+				if (callback) callback()
+			}
+		},
+		async loadRefundCount() {
+			const requestId = ++this.refundCountRequestId
+			try {
+				const res = await getLeaderRefundCount()
+				// 多次刷新可能并发，只采用最新一次请求，避免旧响应覆盖已处理后的数字。
+				if (requestId !== this.refundCountRequestId) return
+				const count = Number(res.data)
+				this.refundCount = Number.isFinite(count) && count > 0 ? Math.floor(count) : 0
+			} catch (err) {
+				console.log('待处理售后数量加载失败：', err)
+			}
 		},
 		async loadOrders(callback) {
 			if (this.loading) return
@@ -1371,6 +1397,30 @@ export default {
 	text-align: center;
 	font-size: 28rpx;
 	color: #222;
+}
+
+.tab-label {
+	position: relative;
+	display: inline-block;
+}
+.refund-badge {
+	position: absolute;
+	top: 4rpx;
+	left: calc(100% - 2rpx);
+	min-width: 36rpx;
+	height: 36rpx;
+	padding: 0 7rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	border: 2rpx solid #fff;
+	border-radius: 999rpx;
+	background: #ff5722;
+	color: #fff;
+	font-size: 24rpx;
+	line-height: 1;
+	white-space: nowrap;
 }
 
 .tab.active {

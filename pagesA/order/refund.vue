@@ -5,8 +5,11 @@
 			<text class="title" :style="miniNavTitleStyle()">批量退款</text>
 			<text class="nav-space"></text>
 		</view>
+		<picker class="group-picker" :range="groupList" range-key="name" :value="groupIndex" :disabled="loading || submitting" @change="onGroupChange">
+			<view>{{ groupList[groupIndex].name }} ▾</view>
+		</picker>
 		<view class="search-bar">
-			<input v-model="keyword" class="search-input" placeholder="搜索订单号/团员/商品" confirm-type="search" @confirm="searchRefundOrders" />
+			<input v-model="keyword" class="search-input" placeholder="搜索商品" confirm-type="search" @confirm="searchRefundOrders" />
 			<view class="search-action" @click="searchRefundOrders">搜索</view>
 		</view>
 		<view class="page">
@@ -24,7 +27,7 @@
 					<text v-if="!isRefundable(goods)" class="unavailable">非退款项</text>
 				</view>
 			</view>
-			<view v-if="!loading && orderList.length === 0" class="empty">暂无待处理退款申请</view>
+			<view v-if="!loading && orderList.length === 0" class="empty">{{ groupId ? '暂无待处理退款商品' : '请先选择团购活动' }}</view>
 			<view v-if="loading" class="empty">加载中...</view>
 			<view v-else-if="orderList.length" class="more">{{ hasMore ? '上拉加载更多' : '没有更多退款申请了' }}</view>
 		</view>
@@ -46,12 +49,11 @@
 </template>
 
 <script>
-import { approveLeaderRefundOrder, getLeaderRefundApplyList } from "@/api/leader.js"
+import { approveLeaderRefundOrder, getLeaderApproveList, getLeaderGroupList } from "@/api/leader.js"
 import {
 	buildBatchRefundSummary,
 	buildRefundApprovalPayload,
-	isLeaderRefundableGoods,
-	normalizeLeaderRefundApplyList,
+	normalizeLeaderBatchRefundList,
 	REFUND_APPROVE_STATUS,
 	toggleRefundSelection
 } from "@/utils/leaderOrder.js"
@@ -61,6 +63,10 @@ export default {
 	data() {
 		return {
 			keyword: '',
+			activeGoodsName: '',
+			groupList: [{ id: 0, name: '请选择团购活动' }],
+			groupIndex: 0,
+			groupId: 0,
 			orderList: [],
 			selection: {},
 			page: 1,
@@ -79,16 +85,21 @@ export default {
 			let selectable = 0
 			this.orderList.forEach(order => {
 				order.goods.forEach(goods => {
-					if (isLeaderRefundableGoods(goods)) selectable += 1
+					if (this.isRefundable(goods)) selectable += 1
 				})
 			})
 			return selectable > 0 && this.summary.itemCount === selectable
 		}
 	},
 	onLoad() {
-		this.loadRefundOrders()
+		this.loadGroups()
+	},
+	onShow() {
+		// 从详情返回后重新读取列表并清空选择，避免沿用已处理的退款项。
+		if (this.groupId) this.searchRefundOrders()
 	},
 	onPullDownRefresh() {
+		if (this.loading || this.submitting) return uni.stopPullDownRefresh()
 		this.page = 1
 		this.orderList = []
 		this.selection = {}
@@ -96,24 +107,48 @@ export default {
 	},
 	onReachBottom() {
 		if (this.loading || !this.hasMore) return
-		this.page += 1
 		this.loadRefundOrders()
 	},
 	methods: {
+		async loadGroups() {
+			try {
+				let page = 1
+				let rows
+				do {
+					const res = await getLeaderGroupList({ cat: 0, catId: 0, status: 0, page, pageSize: 100 })
+					rows = Array.isArray(res.data) ? res.data : ((res.data || {}).list || [])
+					this.groupList.push(...rows.map(item => ({ id: item.id || item.groupId, name: item.name || item.groupName || item.title || '未命名团购' })))
+					page += 1
+				} while (rows.length === 100)
+			} catch (err) {
+				uni.showToast({ title: '团购列表加载失败，请重新进入', icon: 'none' })
+			}
+		},
+		onGroupChange(event) {
+			if (this.loading || this.submitting) return
+			this.groupIndex = Number(event.detail.value)
+			this.groupId = Number(this.groupList[this.groupIndex].id || 0)
+			this.searchRefundOrders()
+		},
 		async loadRefundOrders(callback) {
-			if (this.loading) return
+			if (this.loading || !this.groupId) {
+				if (callback) callback()
+				return
+			}
+			const page = this.page
 			this.loading = true
 			try {
-				// 新接口：POST /order/leader/refund/applyList，请求体只有 keyword/page/pageSize，
-				// 返回 { total, page, pageSize, list }，每条即一条退款申请记录。
-				const res = await getLeaderRefundApplyList({
-					keyword: this.keyword,
-					page: this.page,
+				const res = await getLeaderApproveList({
+					groupId: this.groupId,
+					goodsName: this.activeGoodsName,
+					page,
 					pageSize: this.pageSize
 				})
-				const { list, total } = normalizeLeaderRefundApplyList(res.data)
-				this.orderList = this.page <= 1 ? list : this.orderList.concat(list)
-				this.hasMore = this.orderList.length < total
+				const list = normalizeLeaderBatchRefundList(res.data)
+				this.orderList = page === 1 ? list : this.orderList.concat(list)
+				// 返回数组不含 total；满页时继续探测，成功后才推进页码，失败重试不跳页。
+				this.hasMore = list.length === this.pageSize
+				this.page = page + 1
 			} catch (err) {
 				if (this.page <= 1) this.orderList = []
 				uni.showToast({ title: String((err && (err.msg || err.message)) || '退款列表加载失败'), icon: 'none' })
@@ -127,15 +162,17 @@ export default {
 			return !!(entry && entry.goodsMap && entry.goodsMap[goods.id])
 		},
 		toggleGoods(order, goods) {
+			if (this.submitting) return
 			const checked = !this.isGoodsChecked(order, goods)
 			this.selection = toggleRefundSelection(this.selection, order, goods, checked)
 		},
 		toggleAll() {
+			if (this.submitting) return
 			let next = {}
 			if (!this.allChecked) {
 				this.orderList.forEach(order => {
 					order.goods.forEach(goods => {
-						if (isLeaderRefundableGoods(goods)) {
+						if (this.isRefundable(goods)) {
 							next = toggleRefundSelection(next, order, goods, true)
 						}
 					})
@@ -144,22 +181,27 @@ export default {
 			this.selection = next
 		},
 		isRefundable(goods) {
-			return isLeaderRefundableGoods(goods)
+			return Number(goods.id) > 0 && Number(goods.currentRefundNum) > 0 && Number.isFinite(goods.currentRefundAmount) && goods.currentRefundAmount >= 0
 		},
 		toggleRefundableGoods(order, goods) {
 			if (!this.isRefundable(goods)) return
 			this.toggleGoods(order, goods)
 		},
 		refundGoodsNum(goods) {
-			return Number(goods.refundGoodsNum || goods.num || 0)
+			return Number(goods.currentRefundNum || 0)
 		},
 		searchRefundOrders() {
+			if (this.loading || this.submitting) return
+			this.activeGoodsName = this.keyword.trim()
+			this.hasMore = false
+			this.confirmVisible = false
 			this.page = 1
 			this.orderList = []
 			this.selection = {}
 			this.loadRefundOrders()
 		},
 		confirmBatchRefund() {
+			if (this.loading || this.submitting) return
 			if (this.summary.itemCount <= 0) {
 				uni.showToast({ title: '请选择退款商品', icon: 'none' })
 				return
@@ -167,11 +209,11 @@ export default {
 			this.confirmVisible = true
 		},
 		async submitBatchRefund() {
-			if (this.submitting) return
+			if (this.loading || this.submitting || this.summary.itemCount <= 0) return
 			this.submitting = true
 			try {
 				// silentToast：退款失败原文由本页 modal 展示（金额相关，必须让团长看清）
-				await approveLeaderRefundOrder(buildRefundApprovalPayload({ selection: this.selection, status: REFUND_APPROVE_STATUS.AGREE }), { silentToast: true })
+				await approveLeaderRefundOrder(buildRefundApprovalPayload({ selection: this.selection, status: REFUND_APPROVE_STATUS.AGREE, type: 1 }), { silentToast: true })
 				uni.showToast({ title: '退款成功', icon: 'success' })
 				this.confirmVisible = false
 				this.selection = {}
@@ -206,6 +248,7 @@ export default {
 .back, .nav-space { width: 160rpx; }
 .back { position: absolute; left: 28rpx; display: flex; align-items: center; color: #666; font-size: 48rpx; }
 .title { position: absolute; left: 160rpx; right: 160rpx; font-size: 34rpx; font-weight: 500; text-align: center; }
+.group-picker { padding: 24rpx; background: #fff; font-size: 28rpx; border-top: 1rpx solid #eee; }
 .search-bar { display: flex; gap: 14rpx; padding: 18rpx 24rpx; background: #fff; border-top: 1rpx solid #f0f0f0; }
 .search-input { flex: 1; min-width: 0; height: 64rpx; padding: 0 18rpx; color: #333; font-size: 26rpx; background: #f7f7f7; border-radius: 6rpx; box-sizing: border-box; }
 .search-action { padding: 17rpx 24rpx; color: #fff; font-size: 24rpx; background: #16a34a; border-radius: 6rpx; }

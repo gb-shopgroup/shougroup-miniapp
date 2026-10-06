@@ -567,7 +567,7 @@ export function getLeaderRefundOrderList(data) {
 	})
 }
 
-// 团长端-退款申请列表（批量退款工作台用）
+// 团长端-退款申请列表（申请记录 DTO；批量退款工作台改用 getLeaderApproveList）
 // 返回 LeaderRefundApplyListResponse { total, page, pageSize, list }，每条是一条退款申请记录，
 // 字段口径与审核 /order/leader/refund/approve 的 refundOrderGoodsMap 对齐。
 export function getLeaderRefundApplyList(data) {
@@ -576,6 +576,16 @@ export function getLeaderRefundApplyList(data) {
 		method: 'POST',
 		data
 	})
+}
+
+// 批量退款按具体团购查询，返回订单数组（不是退款申请分页对象）。
+export function getLeaderApproveList(data) {
+	return request2({ url: '/order/leader/approve/list', method: 'POST', data })
+}
+
+// 团长待处理售后数：工作台和订单售后 tab 共用，不接受团购或自提点筛选。
+export function getLeaderRefundCount() {
+	return request2({ url: '/order/leader/get/refund/count', method: 'POST', data: {} })
 }
 
 // 团长端-我的团员列表

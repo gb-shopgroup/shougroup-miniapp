@@ -15,7 +15,10 @@
 				<text>账户信息</text>
 			</view>
 			<view class="menu-item" v-if="canUse(30)" @click="goToOrderPage">
-				<image class="menu-icon" src="/static/image/leader-dashboard/order.png" mode="aspectFit"></image>
+				<view class="order-icon-wrap">
+					<image class="menu-icon" src="/static/image/leader-dashboard/order.png" mode="aspectFit"></image>
+					<text v-if="refundCount > 0" class="refund-badge">{{ refundCount > 99 ? '99+' : refundCount }}</text>
+				</view>
 				<text>团购订单</text>
 			</view>
 			<view class="menu-item" v-if="canUse(30)" @click="scanOrder">
@@ -66,6 +69,7 @@
 </template>
 
 <script>
+import { getLeaderRefundCount } from "@/api/leader.js"
 import { parseLeaderOrderScanResult } from "@/utils/leaderOrder.js"
 import { DEFAULT_STAFF_AUTH_IDS } from "@/utils/leaderConfig.js"
 import env from "@/config/env.js"
@@ -81,6 +85,8 @@ export default {
 	data() {
 		return {
 			leaderAuth: [],
+			refundCount: 0,
+			refundCountRequestId: 0,
 			leaderSuper: false,
 			leaderRole: 'staff',
 			roleTitle: '员工工作台',
@@ -104,8 +110,33 @@ export default {
 	},
 	onShow() {
 		this.initLeaderAvatar()
+		this.loadRefundCount()
+	},
+	async onPullDownRefresh() {
+		try {
+			this.initLeaderAvatar()
+			await this.loadRefundCount()
+		} finally {
+			uni.stopPullDownRefresh()
+		}
 	},
 	methods: {
+		async loadRefundCount() {
+			const requestId = ++this.refundCountRequestId
+			if (!this.isLeaderWorkbench() || !this.canUse(30)) {
+				this.refundCount = 0
+				return
+			}
+			try {
+				const res = await getLeaderRefundCount()
+				// 返回页面和下拉刷新都可能发起请求，旧响应不能覆盖最新待处理数。
+				if (requestId !== this.refundCountRequestId) return
+				const count = Number(res.data)
+				this.refundCount = Number.isFinite(count) && count > 0 ? Math.floor(count) : 0
+			} catch (err) {
+				console.log('待处理售后数量加载失败：', err)
+			}
+		},
 		initLeaderAvatar() {
 			const shopInfo = uni.getStorageSync('leader_shop_info') || {}
 			this.avatarFallbackUsed = false
@@ -284,7 +315,38 @@ export default {
 	background: #f5f5f5;
 }
 
+.order-icon-wrap {
+	position: relative;
+	width: 64rpx;
+	height: 64rpx;
+	margin-bottom: 12rpx;
+}
+.order-icon-wrap .menu-icon {
+	display: block;
+	margin-bottom: 0;
+}
+.refund-badge {
+	position: absolute;
+	top: -8rpx;
+	right: -18rpx;
+	min-width: 44rpx;
+	height: 40rpx;
+	padding: 0 8rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	border: 2rpx solid #fff;
+	border-radius: 999rpx;
+	background: #ff5722;
+	color: #fff;
+	font-size: 28rpx;
+	font-weight: 400;
+	line-height: 1;
+	white-space: nowrap;
+}
 .menu-item {
+	position: relative;
 	height: 150rpx;
 	display: flex;
 	flex-direction: column;
