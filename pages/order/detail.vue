@@ -48,6 +48,7 @@
 					<view class="station-address" v-if="displayOrder.pointAddress">
 						<text>{{ displayOrder.pointAddress }}</text>
 						<text class="copy-btn" @click="copyText(displayOrder.pointAddress)">复制</text>
+						<text class="copy-btn view-point-btn" @click="previewPickupPoint">查看</text>
 					</view>
 				</view>
 			</view>
@@ -329,7 +330,8 @@ export default {
 		async loadPickupPointContact(order) {
 			const leaderId = Number(order.leaderId || 0)
 			const pointId = Number(order.pointId || 0)
-			if (!leaderId || !pointId || order.pointPhone) return order
+			// 照片与联系方式独立补齐，已有电话也不能跳过门头照片查询。
+			if (!leaderId || !pointId || (order.pointPhone && order.pointImg)) return order
 			try {
 				const res = await getGroupPoint({ id: leaderId })
 				const point = (Array.isArray(res.data) ? res.data : [])
@@ -340,10 +342,11 @@ export default {
 					pointName: point.name || order.pointName,
 					pointAddress: point.address || order.pointAddress,
 					pointPerson: point.person || order.pointPerson,
-					pointPhone: point.phone || ''
+					pointPhone: point.phone || order.pointPhone || '',
+					pointImg: point.img || order.pointImg || ''
 				})
 			} catch (err) {
-				console.log('加载自提点联系方式失败：', err)
+				console.log('加载自提点信息失败：', err)
 				return order
 			}
 		},
@@ -473,6 +476,18 @@ export default {
 		formatAmount(value) {
 			const amount = Number(value || 0)
 			return amount.toFixed(2).replace(/\.?0+$/, '')
+		},
+		previewPickupPoint() {
+			const image = String(this.displayOrder.pointImg || '').trim()
+			if (!image) {
+				uni.showToast({ title: '该自提点暂未上传照片', icon: 'none' })
+				return
+			}
+			uni.previewImage({
+				current: image,
+				urls: [image],
+				fail: () => uni.showToast({ title: '照片预览失败，请重试', icon: 'none' })
+			})
 		},
 		copyText(value) {
 			if (!value) return
@@ -729,6 +744,11 @@ export default {
 	line-height: 32rpx;
 	color: #777;
 	box-sizing: border-box;
+}
+
+.view-point-btn {
+	flex-shrink: 0;
+	color: #18c66a;
 }
 
 .shop-row {

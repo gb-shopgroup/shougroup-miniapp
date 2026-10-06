@@ -514,6 +514,7 @@ export function normalizeMemberOrder(row = {}) {
 		pointId: Number(row.pointId || 0),
 		pointName: row.pointName || '',
 		pointAddress: row.pointAddress || '',
+		pointImg: row.pointImg || '',
 		pointPerson: row.pointPerson || '',
 		pointPhone: row.pointPhone || row.pointTelephone || '',
 		receiptCode: row.receiptCode || '',
