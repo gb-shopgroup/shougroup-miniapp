@@ -51,7 +51,7 @@
 			<view class="stock-hint">
 				<!-- 显示商品限购和库存 -->
 				<view v-if="goods.stock == 1 && goods.balance > 20">库存充足</view>
-				<view v-if="goods.stock == 1 && goods.balance <= 20">库存告急</view>
+				<view v-if="goods.stock == 1 && goods.balance <= 20">仅剩{{goods.balance}}件</view>
 			</view>
 		</view>
 		
