@@ -93,21 +93,21 @@
 				<text>物流方式</text>
 				<text class="setting-value">顾客自提 ›</text>
 			</view>
-			<view class="setting-row" :class="{ 'row-readonly': !isAdd }" @click="openLabelPanel">
+			<view class="setting-row"  @click="openLabelPanel">
 				<text>显示标签</text>
 				<view class="setting-value-wrap">
 					<text class="setting-value">{{ labelText }}</text>
 					<text class="setting-arrow" v-if="isAdd">›</text>
 				</view>
 			</view>
-			<view class="setting-row time-row" :class="{ 'row-readonly': !isAdd }" @click="openTimePanel">
+			<view class="setting-row time-row"  @click="openTimePanel">
 				<text>团购时间</text>
 				<view class="setting-value-wrap">
 					<view class="time-value">
 						<text>开始 {{ startTimeText || (isAdd ? '请选择' : '—') }}</text>
 						<text>结束 {{ endTimeText || (isAdd ? '请选择' : '—') }}</text>
 					</view>
-					<text class="setting-arrow" v-if="isAdd">›</text>
+					<text class="setting-arrow" >›</text>
 				</view>
 			</view>
 			<!-- 虚拟跟团数直接随 virtual 字段提交，由后端负责存储及统计口径。 -->
@@ -316,7 +316,12 @@ export default {
 				for(var i = 0; i < arr.length; i++){
 					this.goodsIds.push(String(arr[i].gid))
 				}
-				this.resetTimeDraft()
+				if(isCopy){
+					this.resetTimeDraft()
+				}else{
+					this.resetTimeDraft()
+				}
+				
 				this.syncCategoryName()
 				this.syncSelectedGoodsStock()
 				this.syncTagPickerIndex()
@@ -387,15 +392,51 @@ export default {
 			}
 		},
 		resetTimeDraft(){
-			const start = this.dateTimeFromTimestamp(this.formData.startTime, this.formatPickerClock(new Date()))
-			const end = this.dateTimeFromTimestamp(this.formData.endTime, '23:59')
+			// const start = this.dateTimeFromTimestamp(this.formData.startTime, this.formatPickerClock(new Date()))
+			// const end = this.dateTimeFromTimestamp(this.formData.endTime, '23:59')
+			// this.timeDraft = {
+			// 	startDate: start.date,
+			// 	startClock: start.clock,
+			// 	endDate: end.date,
+			// 	endClock: end.clock
+			// }
+           // 编辑态，使用后端返回的时间戳
+			// if(!this.isAdd){
+			// const start = this.dateTimeFromTimestamp(this.formData.startTime, this.formatPickerClock(new Date()))
+			// const end = this.dateTimeFromTimestamp(this.formData.endTime, '23:59')
+			// this.timeDraft = {
+			// startDate: start.date,
+			// startClock: start.clock,
+			// endDate: end.date,
+			// endClock: end.clock
+			// }
+			// return
+			// }
+
+			// ===== 新增开团：自动填充【当前时间为开始，7天后23:59为结束】=====
+			const now = new Date()
+			// 开始时间：当前日期、当前时刻
+			const startDateText = this.formatPickerDate(now)
+			const startClockText = this.formatPickerClock(now)
+
+			// 结束时间：+7天，固定 23:59
+			const endDateObj = new Date(now)
+			endDateObj.setDate(endDateObj.getDate() + 7)
+			const endDateText = this.formatPickerDate(endDateObj)
+			const endClockText = '23:59'
+
 			this.timeDraft = {
-				startDate: start.date,
-				startClock: start.clock,
-				endDate: end.date,
-				endClock: end.clock
-			}
+			startDate: startDateText,
+	    	startClock: startClockText,
+	     	endDate: endDateText,
+	     	endClock: endClockText
+        	}
+
+	        // 同步到formData的时间戳
+	        this.formData.startTime = this.timestampFromDateTime(startDateText, startClockText)
+	        this.formData.endTime = this.timestampFromDateTime(endDateText, endClockText)
 		},
+		
 		timestampFromDateTime(dateText, clockText){
 			const parts = String(dateText || '').split('-').map(Number)
 			const clockParts = String(clockText || '00:00').split(':').map(Number)
@@ -447,8 +488,8 @@ export default {
 			this.closeLabelPanel()
 		},
 		openTimePanel(){
-			// 编辑态时间只读展示
-			if (!this.isAdd) return
+			// 去掉编辑态时间只读展示
+			
 			this.resetTimeDraft()
 			this.timePanelVisible = true
 		},
@@ -581,6 +622,12 @@ export default {
 					uni.showToast({ title: '请选择商品', icon: 'none' })
 					return
 				}
+					// 编辑团购同样校验时间
+					const timeResult = validateGroupTime(this.formData.startTime, this.formData.endTime)
+					if (!timeResult.valid) {
+						uni.showToast({ title: timeResult.message, icon: 'none' })
+						return
+					}
 				this.requestSubmitData()
 				return
 			}
