@@ -148,10 +148,10 @@
 			<view class="sheet-title">团购时间</view>
 			<view class="time-picker-row">
 				<text class="time-picker-label">开始</text>
-				<picker mode="date" :value="timeDraft.startDate" :start="minDateText" :end="maxDateText" @change="onTimeDateChange('start', $event)">
+				<picker  v-if="isAdd" mode="date" :value="timeDraft.startDate" :start="minDateText" :end="maxDateText" @change="onTimeDateChange('start', $event)">
 					<view class="time-picker-value">{{ timeDraft.startDate }}</view>
 				</picker>
-				<picker mode="time" :value="timeDraft.startClock" @change="onTimeClockChange('start', $event)">
+				<picker  v-if="isAdd" mode="time" :value="timeDraft.startClock"  @change="onTimeClockChange('start', $event)">
 					<view class="time-picker-value clock">{{ timeDraft.startClock }}</view>
 				</picker>
 			</view>
@@ -401,17 +401,17 @@ export default {
 			// 	endClock: end.clock
 			// }
            // 编辑态，使用后端返回的时间戳
-			// if(!this.isAdd){
-			// const start = this.dateTimeFromTimestamp(this.formData.startTime, this.formatPickerClock(new Date()))
-			// const end = this.dateTimeFromTimestamp(this.formData.endTime, '23:59')
-			// this.timeDraft = {
-			// startDate: start.date,
-			// startClock: start.clock,
-			// endDate: end.date,
-			// endClock: end.clock
-			// }
-			// return
-			// }
+			if(!this.isAdd){
+			const start = this.dateTimeFromTimestamp(this.formData.startTime, this.formatPickerClock(new Date()))
+			const end = this.dateTimeFromTimestamp(this.formData.endTime, '23:59')
+			this.timeDraft = {
+			startDate: start.date,
+			startClock: start.clock,
+			endDate: end.date,
+			endClock: end.clock
+			}
+			return
+			}
 
 			// ===== 新增开团：自动填充【当前时间为开始，7天后23:59为结束】=====
 			const now = new Date()
@@ -1403,10 +1403,24 @@ export default {
 	box-sizing: border-box;
 }
 
+.time-picker-value-disable-text {
+	height: 58rpx;
+	padding: 0 18rpx;
+	border-radius: 6rpx;
+	background: #f7f7f7;
+	color: #333;
+	font-size: 26rpx;
+	line-height: 58rpx;
+	text-align: center;
+	box-sizing: border-box;
+}
 .time-picker-value.clock {
 	min-width: 128rpx;
 }
 
+.time-picker-value-clock-disable-text {
+	min-width: 128rpx;
+}
 .sheet-actions {
 	display: grid;
 	grid-template-columns: 1fr 1fr;
