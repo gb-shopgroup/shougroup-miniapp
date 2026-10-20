@@ -89,7 +89,7 @@ export function validateGroupTime(startTime, endTime) {
 	if (!end) return { valid: false, message: '请选择结束时间' }
 	const today = new Date()
 	today.setHours(0, 0, 0, 0)
-	if (start < Math.floor(today.getTime() / 1000)) return { valid: false, message: '开始时间不能早于今天' }
+	//if (start < Math.floor(today.getTime() / 1000)) return { valid: false, message: '开始时间不能早于今天' }
 	if (end <= start) return { valid: false, message: '结束时间必须晚于开始时间' }
 	return { valid: true, message: '' }
 }
