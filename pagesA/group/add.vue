@@ -146,12 +146,12 @@
 	<view class="sheet-mask" v-if="timePanelVisible" @click="closeTimePanel">
 		<view class="bottom-sheet time-sheet" @click.stop>
 			<view class="sheet-title">团购时间</view>
-			<view class="time-picker-row">
+			<view v-if="isAdd" class="time-picker-row">
 				<text class="time-picker-label">开始</text>
-				<picker  v-if="isAdd" mode="date" :value="timeDraft.startDate" :start="minDateText" :end="maxDateText" @change="onTimeDateChange('start', $event)">
+				<picker   mode="date" :value="timeDraft.startDate" :start="minDateText" :end="maxDateText" @change="onTimeDateChange('start', $event)">
 					<view class="time-picker-value">{{ timeDraft.startDate }}</view>
 				</picker>
-				<picker  v-if="isAdd" mode="time" :value="timeDraft.startClock"  @change="onTimeClockChange('start', $event)">
+				<picker   mode="time" :value="timeDraft.startClock"  @change="onTimeClockChange('start', $event)">
 					<view class="time-picker-value clock">{{ timeDraft.startClock }}</view>
 				</picker>
 			</view>
