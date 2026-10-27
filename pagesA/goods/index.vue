@@ -20,11 +20,11 @@
 					</view>
 					<view class="product-meta">{{ getSpecText(item) }}</view>
 					<view class="product-meta">{{ getStockText(item) }}</view>
-					<view class="product-actions">
+<!-- 					<view class="product-actions">
 						<button size="mini" @click="editProduct(item)">编辑</button>
 						<button v-if="isGoodsClosed(item)" size="mini" @click="restoreProduct(item)">恢复</button>
 						<button v-else size="mini" @click="deleteProduct(item)">删除</button>
-					</view>
+					</view> -->
 				</view>
 			</view>
 
