@@ -14,7 +14,9 @@ export default {
 		const token = uni.getStorageSync('token')
 		// 首次游客打开首页不交换用户身份；等用户主动同意协议并登录时再获取 openid。
 		if(openid && token){
-			this.autoLogin(openid)
+			// 会话恢复是异步的：把 Promise 挂在实例上，首页等它完成后再解析绑定团长 id，
+			// 避免首页读到空的 member_bound_leader_id 而回落到定位推荐
+			this.resumeSessionPromise = this.autoLogin(openid)
 		}
 		//console.log('App Launch')
 	},

@@ -140,6 +140,16 @@ export default {
 		this.initGroupCatList()
 		this.prepareRecommendation()
 	},
+	onShow() {
+		// 登录成功后从登录页 switchTab 回首页不会重跑 onLoad：
+		// 绑定团长 id 与当前使用的不一致（如游客态 0 → 已绑定团长）时，重新按团长加载
+		if (this.recommendationReady) {
+			const cachedLeaderId = Number(uni.getStorageSync(MEMBER_BOUND_LEADER_STORAGE_KEY) || 0)
+			if (cachedLeaderId > 0 && cachedLeaderId !== this.memberLeaderId) {
+				this.prepareRecommendation()
+			}
+		}
+	},
 	// 下拉刷新触发函数
 	onPullDownRefresh() {
 		
@@ -332,6 +342,13 @@ export default {
 			this.ensureLocationForRecommendation(callback)
 		},
 		async resolveMemberLeaderId() {
+			// 冷启动时 App.onLaunch 的 openid 自动登录是异步的：
+			// 等会话恢复完成（3 秒兜底防卡死）再读缓存，否则会拿到空的绑定团长 id 而误走定位推荐
+			const app = getApp()
+			if (app && app.resumeSessionPromise) {
+				const timeout = new Promise(resolve => setTimeout(resolve, 3000))
+				await Promise.race([app.resumeSessionPromise, timeout])
+			}
 			let leaderId = Number(uni.getStorageSync(MEMBER_BOUND_LEADER_STORAGE_KEY) || 0)
 			if (!uni.getStorageSync('token')) return leaderId
 			try {
