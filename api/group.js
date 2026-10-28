@@ -301,6 +301,57 @@ export function getIsLeader() {
 	})
 }
 
+// 申请成为团长（会员端提交申请记录）
+// 接口文档：POST /user/apply/become/leader，body { name, mobile }，返回 data 为申请记录ID（Long）
+export function applyBecomeLeader(data) {
+	return request({
+		url: '/user/apply/become/leader',
+		method: 'POST',
+		data: {
+			name: String(data.name || ''),
+			mobile: String(data.mobile || '')
+		}
+	})
+}
+
+// ========== 建议反馈（会员端） ==========
+
+// 提交建议反馈
+// 接口文档：POST /user/member/advise/add，body AdviseFeedbackRequest { id(新增不传), title, content }，data 为新记录ID
+export function addMemberAdvise(data = {}) {
+	return request({
+		url: '/user/member/advise/add',
+		method: 'POST',
+		data: {
+			title: String(data.title || ''),
+			content: String(data.content || '')
+		}
+	})
+}
+
+// 我的建议反馈列表（分页）
+// 接口文档：GET /user/member/advise/list?status=&page=&pageSize=，data 为 Map（list + total）
+export function getMemberAdviseList(params = {}) {
+	return request({
+		url: '/user/member/advise/list',
+		method: 'GET',
+		data: {
+			page: Number(params.page || 1),
+			pageSize: Number(params.pageSize || 10)
+		}
+	})
+}
+
+// 建议反馈详情（含官方回复 reply、状态 statusName、时间）
+// 接口文档：GET /user/member/advise/info?id=
+export function getMemberAdviseInfo(id) {
+	return request({
+		url: '/user/member/advise/info',
+		method: 'GET',
+		data: { id: Number(id || 0) }
+	})
+}
+
 // 获取文章内容
 export function getArticleInfo(params) {
 	return request({

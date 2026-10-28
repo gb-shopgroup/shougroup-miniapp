@@ -62,6 +62,7 @@
 <script>
 import point from "./point.vue"
 import { savePayCache } from "@/utils/payCache.js"
+import { requireMemberLogin } from "@/utils/auth.js"
 import { getGroupShop, getGroupPoint, addOrder, payOrder, getOpenId } from "@/api/group.js"
 import { 
 	buildOrderPayload, 
@@ -229,6 +230,8 @@ export default {
 		},		
 		// 下单事件
 		async submitOrder() {
+			// 未注册/未登录先引导登录，登录后回到本页继续下单
+			if(!requireMemberLogin({ tip: '请先登录后再下单' })) return
 			if(this.createdOrderNo){
 				this.gotoOrderDetail(this.createdOrderNo)
 				return

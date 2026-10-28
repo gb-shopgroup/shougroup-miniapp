@@ -16,7 +16,7 @@
 				<image class="menu-icon" src="/static/image/mine/order.png" mode="aspectFit"></image>
 				<text class="text">我的订单</text>
 			</view>
-			<view class="menu-item" @click="showFeedbackHint">
+			<view class="menu-item" @click="goFeedback">
 				<image class="menu-icon" src="/static/image/mine/feedback.png" mode="aspectFit"></image>
 				<text class="text">建议反馈</text>
 			</view>
@@ -29,6 +29,13 @@
 				<text class="text">{{ switchRoleText || '团长切换' }}</text>
 			</view>
 		</view>
+		<!-- 团长入住入口 -->
+		<view class="leader-section">
+			<view class="menu-item" @click="goApplyLeader">
+				<image class="menu-icon" src="/static/image/applyleader/tzrz.png" mode="aspectFit"></image>
+				<text class="text">团长入住</text>
+			</view>
+		</view>
 		<view v-if="isLoggedIn" class="logout-btn" :class="{ disabled: loggingOut }" @click="logout">退出登录</view>
 	</view>
 </view>
@@ -37,6 +44,7 @@
 <script>
 import { getMemberInfo, getIsLeader, logoutUser } from "@/api/group.js"
 import { cacheMemberLoginInfo, MEMBER_BOUND_LEADER_STORAGE_KEY, WX_ACCESS_TOKEN_STORAGE_KEY } from "@/utils/auth.js"
+import { requireMemberLogin as guardMemberLogin } from "@/utils/auth.js"
 import env from "@/config/env.js"
 
 const LOGIN_STORAGE_KEYS = [
@@ -126,10 +134,9 @@ export default {
 				fail: () => uni.switchTab({ url: '/pages/index/index' })
 			})
 		},
+		// 统一登录守卫：未注册/未登录时提示并跳登录页，登录成功后回到「我的」
 		requireMemberLogin() {
-			if (this.isLoggedIn) return true
-			this.goLogin()
-			return false
+			return guardMemberLogin()
 		},
 		normalizeMemberInfo(member = {}) {
 			const source = member || {}
@@ -192,8 +199,17 @@ export default {
 			if (!this.requireMemberLogin()) return
 			uni.switchTab({ url: '/pages/order/index' })
 		},
-		showFeedbackHint() {
-			uni.showToast({ title: '建议反馈暂未开放', icon: 'none' })
+		// 去建议反馈：需先登录，登录后回到本页再进入反馈列表
+		goFeedback() {
+			if (!this.requireMemberLogin()) return
+			const url = '/pages/feedback/index'
+			uni.navigateTo({
+				url,
+				fail: err => {
+					console.log('跳转建议反馈失败：', err)
+					uni.redirectTo({ url })
+				}
+			})
 		},
 		// 去团长控制台
 		goLeaderConsole() {
@@ -209,6 +225,18 @@ export default {
 				fail: err => {
 					console.log('切换团长工作台失败：', err)
 					uni.reLaunch({ url })
+				}
+			})
+		},
+		// 去团长入住申请页
+		goApplyLeader() {
+			if (!this.requireMemberLogin()) return
+			const url = '/pages/applyLeader/index'
+			uni.navigateTo({
+				url,
+				fail: err => {
+					console.log('跳转团长入住失败：', err)
+					uni.redirectTo({ url })
 				}
 			})
 		},
@@ -314,6 +342,14 @@ export default {
 
 .menu-button::after {
 	border: 0;
+}
+
+.leader-section {
+	background: #fff;
+	border-top: 14rpx solid #f6f6f6;
+	border-bottom: 14rpx solid #f6f6f6;
+	display: flex;
+	min-height: 206rpx;
 }
 
 .logout-btn {

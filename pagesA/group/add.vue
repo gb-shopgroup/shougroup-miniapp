@@ -18,7 +18,8 @@
 		
 		<view class="section intro-section">
 			<text class="section-heading">团购介绍</text>
-			<view class="intro-tools" v-if="isAdd">
+			<!-- 团购介绍修改团购时也可编辑 -->
+			<view class="intro-tools">
 				<view class="intro-tool" @click="insertImage"><text class="tool-icon image-icon"></text><text>图片</text></view>
 				<view
 					v-for="layout in imageLayouts"
@@ -38,7 +39,6 @@
 				<editor
 					id="groupIntroEditor"
 					class="intro-editor"
-					:read-only="!isAdd"
 					placeholder="请输入团购介绍，可添加图片和排版"
 					show-img-size
 					show-img-toolbar
@@ -57,11 +57,11 @@
 					<view class="import-btn">从商品库导入</view>
 				</picker>
 			</view>
-			<view class="group-goods-card" v-for="(item, index) in formData.goods" :key="item.gid || index">
+			<view class="group-goods-card" :class="{ 'goods-closed': isGoodsClosed(item) }" v-for="(item, index) in formData.goods" :key="item.gid || index">
 				<text class="sort-index">{{ index + 1 }}</text>
 				<view class="goods-main">
 					<view class="goods-image-wrap">
-						<image class="goods-image" :src="item.img" mode="aspectFill"></image>
+						<image class="goods-image" :class="{ 'goods-image-closed': isGoodsClosed(item) }" :src="item.img" mode="aspectFill"></image>
 						<text class="goods-stock">库存{{ item.stock || '不限' }}</text>
 					</view>
 					<view class="goods-info">
@@ -69,9 +69,19 @@
 						<text class="goods-price">¥{{ item.price }}</text>
 					</view>
 				</view>
-				<view class="goods-actions" v-if="isAdd">
-					<button class="goods-action-btn" size="mini" @click="editGroupGoods(item)">修改</button>
-					<button class="goods-action-btn" size="mini" @click="removeGoods(index)">删除</button>
+				<view class="goods-actions">
+					<block v-if="isAdd">
+						<button class="goods-action-btn" size="mini" @click="editGroupGoods(item)">修改</button>
+						<button class="goods-action-btn" size="mini" @click="removeGoods(index)">删除</button>
+					</block>
+					<!-- 修改团购时仅展示上下架：在线显示「下架」，下架显示「上架」，与团购活动详情同一逻辑 -->
+					<button
+						v-else
+						class="goods-action-btn"
+						:class="{ 'close-toggle': isGoodsClosed(item) }"
+						size="mini"
+						@click="toggleGoodsClose(item)"
+					>{{ isGoodsClosed(item) ? '上架' : '下架' }}</button>
 				</view>
 			</view>
 			<view class="add-goods-outline" @click="openCreateGoods">添加商品</view>
@@ -89,15 +99,16 @@
 				<text>团购分类</text>
 				<text class="setting-value">{{ categoryName || '—' }}</text>
 			</view>
+			<!-- 物流方式固定为顾客自提（pickup=1），不可切换 -->
 			<view class="setting-row">
 				<text>物流方式</text>
-				<text class="setting-value">顾客自提 ›</text>
+				<text class="setting-value">顾客自提</text>
 			</view>
-			<view class="setting-row"  @click="openLabelPanel">
+			<view class="setting-row" @click="openLabelPanel">
 				<text>显示标签</text>
 				<view class="setting-value-wrap">
 					<text class="setting-value">{{ labelText }}</text>
-					<text class="setting-arrow" v-if="isAdd">›</text>
+					<text class="setting-arrow">›</text>
 				</view>
 			</view>
 			<view class="setting-row time-row"  @click="openTimePanel">
@@ -176,7 +187,7 @@
 
 <script>
 import { uploadGroupIntroImage } from "@/api/upload.js"
-import { getLeaderGroupActivityTagList, getLeaderGroupCat, getLeaderOnlineGoodsList, addLeaderGroupInfo, getLeaderGroupInfo, editLeaderGroupInfo } from "@/api/leader.js"
+import { getLeaderGroupActivityTagList, getLeaderGroupCat, getLeaderOnlineGoodsList, addLeaderGroupInfo, getLeaderGroupInfo, editLeaderGroupInfo, closeLeaderActivityGoods } from "@/api/leader.js"
 import { buildGroupGoodsReference } from "@/utils/leaderProduct.js"
 import {
 	buildLeaderGroupCopyDraft,
@@ -192,6 +203,8 @@ export default {
 	data() {
 		return {
 			isAdd: true,
+			// 上下架请求锁，防止重复点击
+			togglingGoods: false,
 			formData: {
 				// 团购id
 				id: 0,
@@ -292,6 +305,7 @@ export default {
 		labelText(){
 			return this.formData.tagName || this.formData.label || (this.formData.tagId ? '已选择标签' : '请选择标签')
 		},
+
 		minDateText(){
 			return this.formatPickerDate(new Date())
 		},
@@ -310,7 +324,9 @@ export default {
 				const res = await getLeaderGroupInfo(params)
 				const group = normalizeLeaderGroup(res.data || {})
 				this.formData = isCopy ? buildLeaderGroupCopyDraft(group) : group
-				
+				// 物流方式仅支持顾客自提，历史数据为邮递时统一纠正后再回传
+				this.formData.pickup = 1
+			
 				const arr = this.formData.goods
 				this.goodsIds = []
 				for(var i = 0; i < arr.length; i++){
@@ -460,8 +476,6 @@ export default {
 			if (index >= 0) this.labelPickerValue = [index]
 		},
 		openLabelPanel(){
-			// 编辑态只允许添加商品，标签只读展示
-			if (!this.isAdd) return
 			if (this.tagOptions.length === 0) {
 				uni.showToast({ title: '暂无可用标签', icon: 'none' })
 				return
@@ -507,7 +521,10 @@ export default {
 			else this.timeDraft.endClock = value
 		},
 		confirmTimePanel(){
-			const start = this.timestampFromDateTime(this.timeDraft.startDate, this.timeDraft.startClock)
+			// 编辑态开始时间不可修改：锁定为原值，仅允许调整结束时间
+			const start = this.isAdd
+				? this.timestampFromDateTime(this.timeDraft.startDate, this.timeDraft.startClock)
+				: Number(this.formData.startTime || 0)
 			const end = this.timestampFromDateTime(this.timeDraft.endDate, this.timeDraft.endClock)
 			const result = validateGroupTime(start, end)
 			if(!result.valid){
@@ -566,6 +583,38 @@ export default {
 			let idx = this.goodsIds.findIndex(item => item === String(gid))
 			if(idx !== -1){ this.goodsIds.splice(idx,1) }
 		},		
+		// 商品是否已下架（团购商品行自身 isClose，非 0 即下架）
+		isGoodsClosed(goods){
+			return Number(goods && goods.isClose || 0) !== 0
+		},
+		// 修改团购时的商品上下架：与团购活动详情同一接口，按团购商品行自身 is_close 取反切换。
+		// 成功后仅本地更新状态，不重拉详情，避免覆盖用户尚未保存的编辑内容；下架后 C 端不显示该商品。
+		toggleGoodsClose(item){
+			const groupId = Number(this.formData.id || 0)
+			if(!item || !item.gid || !groupId || this.togglingGoods) return
+			const closed = this.isGoodsClosed(item)
+			uni.showModal({
+				title: closed ? '上架商品' : '下架商品',
+				content: closed ? '确认在该团购中上架该商品？' : '下架后C端将不显示该商品，确认下架？',
+				success: async res => {
+					if(!res.confirm) return
+					this.togglingGoods = true
+					try {
+						await closeLeaderActivityGoods({ goodsId: item.gid, groupId })
+						const index = this.formData.goods.findIndex(row => String(row.gid) === String(item.gid))
+						if(index >= 0){
+							// splice 整行替换，兼容导入商品（buildGroupGoodsReference 构建项无 isClose 字段）的响应式更新
+							this.formData.goods.splice(index, 1, Object.assign({}, this.formData.goods[index], { isClose: closed ? 0 : 1 }))
+						}
+						uni.showToast({ title: closed ? '已上架' : '已下架', icon: 'success' })
+					} catch (err) {
+						console.log(closed ? '上架商品失败：' : '下架商品失败：', err)
+					} finally {
+						this.togglingGoods = false
+					}
+				}
+			})
+		},
 		// 修改商品库商品
 		editGroupGoods(item){
 			
@@ -598,8 +647,8 @@ export default {
 		},
 		// 选择配送方式
 		onPickupChange(e){
-			
-			this.formData.pickup = e.detail.value
+			// 物流方式仅支持顾客自提（pickup=1），保留方法兼容历史调用
+			this.formData.pickup = 1
 		},
 		// 返回团购列表
 		goBack(){
@@ -616,7 +665,8 @@ export default {
 			// 新增和编辑都统一提交非负整数 virtual，不在前端累计该数值。
 			this.normalizeVirtualCount()
 			
-			// 编辑态允许调整虚拟跟团数，其余信息只读且原样回传，因此只校验商品。
+			// 编辑态：团购名称/分类/开始时间不可改，其余（介绍、物流、结束时间、标签、跟团数、商品上下架与增删）均可修改。
+			// 商品上下架走独立接口即时生效，不随保存提交。
 			if (!this.isAdd) {
 				if (this.formData.goods.length == 0) {
 					uni.showToast({ title: '请选择商品', icon: 'none' })
@@ -1130,6 +1180,22 @@ export default {
 	height: 100%;
 }
 
+/* 下架商品整卡置灰，与团购活动详情表现一致 */
+.group-goods-card.goods-closed {
+	background: #ececec;
+}
+
+.group-goods-card.goods-closed .goods-name,
+.group-goods-card.goods-closed .goods-price,
+.group-goods-card.goods-closed .sort-index {
+	color: #9a9a9a;
+}
+
+.goods-image-closed {
+	filter: grayscale(1);
+	opacity: .45;
+}
+
 .goods-stock {
 	position: absolute;
 	left: 0;
@@ -1187,6 +1253,12 @@ export default {
 .goods-action-btn::after,
 .bottom-action button::after {
 	border: none;
+}
+
+/* 下架状态商品：上架按钮高亮提示可恢复 */
+.goods-action-btn.close-toggle {
+	border-color: #2fc969;
+	color: #2fc969;
 }
 
 .add-goods-outline {

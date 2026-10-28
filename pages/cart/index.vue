@@ -68,6 +68,7 @@ import {
 	reconcileSelectedCartKeys,
 	updateCartGoodsQuantity
 } from "@/utils/groupPurchase.js"
+import { requireMemberLogin } from "@/utils/auth.js"
 
 export default {
 	data() {
@@ -191,6 +192,8 @@ export default {
 			})
 		},
 		goCheckout() {
+			// 结算/下单前必须登录，登录成功后回到购物车页继续结算
+			if(!requireMemberLogin({ tip: '请先登录后再结算' })) return
 			const selectedList = this.selectedGoodsList
 			if(!selectedList.length){
 				uni.showToast({ title: '请选择商品', icon: 'none' })

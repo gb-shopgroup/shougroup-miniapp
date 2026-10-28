@@ -49,12 +49,16 @@
 		<view class="goods-list">
 			<view class="goods" v-for="goods in group.goods" :key="goods.gid">
 				<view class="goods-img-wrap">
-					<image class="goods-img" :src="goods.img" mode="aspectFill"></image>
+					<image class="goods-img" :class="{ 'goods-img-closed': isGoodsClosed(goods) }" :src="goods.img" mode="aspectFill"></image>
 					<text class="goods-stock">库存{{ goods.stock || '不限' }}</text>
 				</view>
 				<view class="goods-info">
 					<text class="goods-name">{{ goods.gname }}</text>
 					<text class="goods-price">¥ {{ goods.price }}</text>
+					<view class="goods-ops">
+						<text class="goods-op" @click.stop="toggleGoodsClose(goods)">{{ isGoodsClosed(goods) ? '上架' : '下架' }}</text>
+						<text v-if="!isGoodsClosed(goods)" class="goods-op" @click.stop="openStockDialog(goods)">修改库存</text>
+					</view>
 				</view>
 				<view class="goods-share" @click.stop="openShareSheet(goods)">
 					<image class="goods-share-icon" src="/static/image/leader_group_share.png" mode="aspectFit"></image>
@@ -110,6 +114,32 @@
 		</view>
 	</view>
 
+	<!-- 修改库存弹窗：按 SKU 维度设置新库存 -->
+	<view v-if="stockDialogVisible" class="stock-mask" @click="closeStockDialog">
+		<view class="stock-dialog" @click.stop>
+			<text class="stock-title">{{ stockGoods.gname || '修改库存' }}</text>
+			<view class="stock-head">
+				<text class="col-name">规格</text>
+				<text class="col-current">当前库存</text>
+				<text class="col-input">设置新库存</text>
+			</view>
+			<scroll-view scroll-y class="stock-list">
+				<view class="stock-row" v-for="(sku, index) in stockSkuList" :key="sku.id || index">
+					<text class="col-name stock-name">{{ sku.names || '默认规格' }}</text>
+					<text class="col-current stock-current">{{ sku.num === '' || sku.num === undefined ? '不限' : sku.num }}</text>
+					<view class="col-input">
+						<input class="stock-input" type="number" v-model="sku.newNum" placeholder="设置库存" placeholder-class="stock-input-placeholder" />
+					</view>
+				</view>
+				<text v-if="stockSkuList.length === 0" class="stock-empty">该商品暂无可修改的规格库存</text>
+			</scroll-view>
+			<view class="stock-actions">
+				<view class="stock-cancel" @click="closeStockDialog">取消</view>
+				<view class="stock-submit" :class="{ disabled: stockSubmitting }" @click="submitStock">修改</view>
+			</view>
+		</view>
+	</view>
+
 	<PosterImgDialog ref="imgDialogRef"></PosterImgDialog>
 	<PosterDialog ref="posterDialogRef" @poster="shareLeaderGroupPosterImg"></PosterDialog>
 </view>
@@ -120,12 +150,16 @@ import PosterImgDialog from './img.vue'
 import PosterDialog from './poster.vue'
 import parseHtml from '@/utils/html-parser.js'
 import {
+	closeLeaderActivityGoods,
 	closeLeaderGroupInfo,
+	getLeaderGoodsInfo,
 	getLeaderGroupInfo,
 	makeLeaderGroupPoster,
-	shareLeaderGroupGoodsPoster
+	shareLeaderGroupGoodsPoster,
+	updateLeaderSkuStock
 } from '@/api/leader.js'
 import { getLeaderGroupManageActions, normalizeLeaderGroup, normalizeRichTextImages } from '@/utils/leaderGroup.js'
+import { normalizeLeaderSkuDraftList } from '@/utils/leaderProduct.js'
 
 export default {
 	components: { PosterImgDialog, PosterDialog },
@@ -135,7 +169,12 @@ export default {
 			group: normalizeLeaderGroup({}),
 			manageSheetVisible: false,
 			isRequesting: false,
-			shareLoading: false
+			shareLoading: false,
+			// 修改库存弹窗状态
+			stockDialogVisible: false,
+			stockGoods: {},
+			stockSkuList: [],
+			stockSubmitting: false
 		}
 	},
 	computed: {
@@ -342,6 +381,91 @@ export default {
 				uni.showToast({ title: '生成海报失败', icon: 'none' })
 			} finally {
 				uni.hideLoading()
+			}
+		},
+		// 商品是否已下架（团购商品行自身 isClose，非 0 即下架）
+		isGoodsClosed(goods){
+			return Number(goods && goods.isClose || 0) !== 0
+		},
+		// 上下架：后端按团购商品行自身 is_close 取反切换，成功后刷新详情
+		toggleGoodsClose(goods){
+			if(!goods || !goods.gid || !this.group.id || this.isRequesting) return
+			const closed = this.isGoodsClosed(goods)
+			uni.showModal({
+				title: closed ? '上架商品' : '下架商品',
+				content: closed ? '确认在该团购中上架该商品？' : '下架后用户将无法继续购买该商品，确认下架？',
+				success: async res => {
+					if(!res.confirm) return
+					this.isRequesting = true
+					try {
+						await closeLeaderActivityGoods({ goodsId: goods.gid, groupId: this.group.id })
+						uni.showToast({ title: closed ? '已上架' : '已下架', icon: 'success' })
+						this.initDetail()
+					} catch (err) {
+						console.log(closed ? '上架商品失败：' : '下架商品失败：', err)
+					} finally {
+						this.isRequesting = false
+					}
+				}
+			})
+		},
+		// 打开修改库存弹窗：拉取商品详情的 SKU 列表，逐个 SKU 设置新库存
+		async openStockDialog(goods){
+			if(!goods || !goods.gid) return
+			this.stockGoods = goods
+			this.stockSkuList = []
+			this.stockDialogVisible = true
+			uni.showLoading({ title: '加载中...', mask: true })
+			try {
+				const res = await getLeaderGoodsInfo({ id: goods.gid })
+				const skuList = normalizeLeaderSkuDraftList((res.data && res.data.skuList) || [])
+				// newNum 为用户要设置的新库存，初始留空由团长填写
+				this.stockSkuList = skuList.map(item => Object.assign({}, item, {
+					newNum: item.num === '' ? '' : String(item.num)
+				}))
+			} catch (err) {
+				console.log('加载商品库存失败：', err)
+				uni.showToast({ title: '加载库存信息失败', icon: 'none' })
+			} finally {
+				uni.hideLoading()
+			}
+		},
+		closeStockDialog(){
+			this.stockDialogVisible = false
+		},
+		// 提交修改库存：按 SKU 维度修改为指定库存，商品主表库存由后端按各 SKU 之和同步
+		async submitStock(){
+			if(this.stockSubmitting) return
+			if(this.stockSkuList.length === 0){
+				uni.showToast({ title: '该商品暂无可修改的规格库存', icon: 'none' })
+				return
+			}
+			for(let i = 0; i < this.stockSkuList.length; i++){
+				const sku = this.stockSkuList[i]
+				const value = String(sku.newNum === undefined || sku.newNum === null ? '' : sku.newNum).trim()
+				if(value === '' || !/^\d+$/.test(value) || Number(value) < 0){
+					uni.showToast({ title: `请设置「${sku.names || '默认规格'}」的新库存`, icon: 'none' })
+					return
+				}
+			}
+			this.stockSubmitting = true
+			uni.showLoading({ title: '提交中...', mask: true })
+			try {
+				await updateLeaderSkuStock({
+					goodsId: this.stockGoods.gid,
+					skuList: this.stockSkuList.map(item => ({
+						id: item.id,
+						num: Number(String(item.newNum).trim())
+					}))
+				})
+				uni.showToast({ title: '库存已修改', icon: 'success' })
+				this.closeStockDialog()
+				this.initDetail()
+			} catch (err) {
+				console.log('修改库存失败：', err)
+			} finally {
+				uni.hideLoading()
+				this.stockSubmitting = false
 			}
 		}
 	}
@@ -629,6 +753,11 @@ export default {
 	font-size: 22rpx;
 }
 
+.goods-img-closed {
+	filter: grayscale(1);
+	opacity: .45;
+}
+
 .goods-info {
 	flex: 1;
 	min-width: 0;
@@ -644,9 +773,23 @@ export default {
 
 .goods-price {
 	display: block;
-	margin-top: 54rpx;
+	margin-top: 18rpx;
 	color: #f04438;
 	font-size: 30rpx;
+}
+
+.goods-ops {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	gap: 120rpx;
+	margin-top: 20rpx;
+}
+
+.goods-op {
+	color: #22c55e;
+	font-size: 26rpx;
+	line-height: 36rpx;
 }
 
 .goods-share {
@@ -794,5 +937,155 @@ export default {
 
 .manage-action.cancel {
 	border-bottom: none;
+}
+
+/* 修改库存弹窗 */
+.stock-mask {
+	position: fixed;
+	left: 0;
+	right: 0;
+	top: 0;
+	bottom: 0;
+	z-index: 90;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: rgba(0, 0, 0, 0.45);
+}
+
+.stock-dialog {
+	width: 640rpx;
+	max-height: 76vh;
+	padding: 36rpx 30rpx calc(30rpx + env(safe-area-inset-bottom));
+	border-radius: 20rpx;
+	background: #fff;
+	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
+}
+
+.stock-title {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	text-align: center;
+	color: #222;
+	font-size: 32rpx;
+	font-weight: 600;
+	line-height: 44rpx;
+}
+
+.stock-head {
+	display: flex;
+	align-items: center;
+	padding: 26rpx 0 14rpx;
+	border-bottom: 1rpx solid #f0f0f0;
+	color: #999;
+	font-size: 24rpx;
+}
+
+.stock-head .col-name {
+	flex: 1.4;
+}
+
+.stock-head .col-current {
+	flex: 1;
+	text-align: center;
+}
+
+.stock-head .col-input {
+	flex: 1.2;
+	text-align: center;
+}
+
+.stock-list {
+	max-height: 46vh;
+}
+
+.stock-row {
+	display: flex;
+	align-items: center;
+	padding: 20rpx 0;
+	border-bottom: 1rpx solid #f5f5f5;
+}
+
+.stock-row .col-name {
+	flex: 1.4;
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	color: #333;
+	font-size: 26rpx;
+}
+
+.stock-row .col-current {
+	flex: 1;
+	text-align: center;
+	color: #666;
+	font-size: 26rpx;
+}
+
+.stock-row .col-input {
+	flex: 1.2;
+	display: flex;
+	justify-content: center;
+}
+
+.stock-input {
+	width: 150rpx;
+	height: 60rpx;
+	padding: 0 16rpx;
+	box-sizing: border-box;
+	border: 1rpx solid #d8d8d8;
+	border-radius: 8rpx;
+	text-align: center;
+	font-size: 26rpx;
+	color: #333;
+}
+
+.stock-input-placeholder {
+	color: #bbb;
+}
+
+.stock-empty {
+	display: block;
+	padding: 40rpx 0;
+	text-align: center;
+	color: #999;
+	font-size: 26rpx;
+}
+
+.stock-actions {
+	display: flex;
+	gap: 26rpx;
+	margin-top: 34rpx;
+}
+
+.stock-cancel,
+.stock-submit {
+	flex: 1;
+	height: 80rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 40rpx;
+	font-size: 30rpx;
+}
+
+.stock-cancel {
+	border: 1rpx solid #d9d9d9;
+	color: #555;
+	background: #fff;
+}
+
+.stock-submit {
+	background: #22c55e;
+	color: #fff;
+	font-weight: 500;
+}
+
+.stock-submit.disabled {
+	opacity: .6;
 }
 </style>

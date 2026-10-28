@@ -169,6 +169,7 @@ import { getPayCache, removePayCache, savePayCache } from "@/utils/payCache.js"
 import { getErcodeInfo, getGroupPoint, getOpenId, getOrderInfo, getRefundRecords, payOrder as requestPayOrder } from "@/api/group.js"
 import { buildMemberErcodeParams, canMemberOrderApplyRefund, canMemberOrderMakeQr, mergeMemberOrderRefundRecords, normalizeMemberOrder } from "@/utils/memberOrder.js"
 import { clearPaidCheckoutSessionState, normalizeGroupPickupPoint } from "@/utils/groupPurchase.js"
+import { requireMemberLogin } from "@/utils/auth.js"
 
 export default {
 	data() {
@@ -403,6 +404,7 @@ export default {
 			}
 		},
 		async payOrder() {
+			if(!requireMemberLogin({ tip: '请先登录后再支付' })) return
 			if (this.isRequesting) return
 			if (this.isPayExpired) {
 				uni.showToast({ title: '支付已超时，请重新下单', icon: 'none' })
@@ -461,10 +463,12 @@ export default {
 			}
 		},
 		goRefundApply() {
+			if(!requireMemberLogin({ tip: '请先登录后再申请退款' })) return
 			const url = `/pages/order/refund?orderNo=${encodeURIComponent(this.orderInfo.orderNo)}`
 			uni.navigateTo({ url })
 		},
 		goRefundDetail() {
+			if(!requireMemberLogin({ tip: '请先登录后再查看售后' })) return
 			const url = `/pages/order/refundDetail?orderNo=${encodeURIComponent(this.orderInfo.orderNo)}`
 			uni.navigateTo({ url })
 		},

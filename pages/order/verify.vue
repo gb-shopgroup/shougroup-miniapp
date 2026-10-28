@@ -101,6 +101,7 @@ import {
 } from "@/utils/memberOrder.js"
 import { logScanEntry } from "@/utils/scanDebug.js"
 import { pickActionErrorMessage, showActionError } from "@/utils/feedback.js"
+import { requireMemberLogin } from "@/utils/auth.js"
 
 export default {
 	data() {
@@ -124,13 +125,8 @@ export default {
 	},
 	onLoad(options = {}) {
 		logScanEntry('订单核销页', options)
-		const token = uni.getStorageSync('token')
-		if (!token) {
-			// 扫码进来未登录时，把 scene 带给登录页，登录成功后再跳回核销页
-			const scene = options.scene ? '?scene=' + encodeURIComponent(options.scene) : ''
-			uni.redirectTo({ url: '/pages/login/index' + scene })
-			return
-		}
+		// 扫码进来未登录时先引导登录，登录成功后带着原 scene 跳回核销页
+		if (!requireMemberLogin({ tip: false, redirect: '/pages/order/verify', query: { scene: options.scene || '' } })) return
 		this.applyEntryParams(options)
 		this.loadOrders()
 	},

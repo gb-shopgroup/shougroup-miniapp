@@ -148,6 +148,7 @@ import {
 	normalizeMemberRefundApplyInfo
 } from "@/utils/memberOrder.js"
 import { pickActionErrorMessage, showActionError } from "@/utils/feedback.js"
+import { requireMemberLogin } from "@/utils/auth.js"
 
 const FALLBACK_REFUND_REASONS = ['多拍、错拍、不想要', '商品破损', '商品与描述不符', '未按约定时间送达', '其他原因']
 	.map((reason, index) => ({ id: index + 1, reason, sort: index + 1, status: 1 }))
@@ -379,6 +380,7 @@ export default {
 			this.confirmVisible = true
 		},
 		async submitRefund() {
+			if(!requireMemberLogin({ tip: '请先登录后再提交退款' })) return
 			if (this.submitting) return
 			this.submitting = true
 			const goods = this.buildRefundGoods()

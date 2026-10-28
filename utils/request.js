@@ -1,4 +1,5 @@
 import env from "@/config/env.js"
+import { clearMemberLoginInfo, currentPagePath, goLoginPage } from "./auth.js"
 
 const maskAuthorization = (header = {}) => {
 	const safeHeader = { ...header }
@@ -36,6 +37,23 @@ const logJson = (prefix, payload, logger = console.log) => {
 	} catch (err) {
 		logger(`${prefix} ${String(payload)}`)
 	}
+}
+
+// 登录失效（401）统一处理：清除本地登录态并引导重新登录，登录后回到当前页继续操作。
+// 并发多个请求同时失效时只处理一次；已在登录页时不重复跳转。
+let handlingAuthExpired = false
+const handleAuthExpired = () => {
+	if (handlingAuthExpired) return
+	handlingAuthExpired = true
+	clearMemberLoginInfo()
+	const current = currentPagePath()
+	if (!current || current.startsWith('/pages/login/index')) {
+		handlingAuthExpired = false
+		return
+	}
+	uni.showToast({ title: '登录已失效，请重新登录', icon: 'none' })
+	goLoginPage({ redirect: current })
+	setTimeout(() => { handlingAuthExpired = false }, 1500)
 }
 
 // 封装 uni.request 请求
@@ -85,6 +103,13 @@ const request = (options) => {
 					data
 				})
 				// 5. 统一状态码判断
+				// 登录失效（HTTP 401 或业务 code 401）：清登录态并引导重新登录
+				if (res.statusCode === 401 || data.code === 401) {
+					handleAuthExpired()
+					markToasted(data, true)
+					reject(data)
+					return
+				}
 				if (data.code === 200) {
 					resolve(data)
 				} else {

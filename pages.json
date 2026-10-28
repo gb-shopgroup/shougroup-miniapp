@@ -27,6 +27,14 @@
 			"style": { "navigationBarTitleText": "登录", "navigationStyle": "custom" }
 		},
 		{
+			"path": "pages/applyLeader/index",
+			"style": { "navigationBarTitleText": "团长入住", "navigationStyle": "custom" }
+		},
+		{
+			"path": "pages/feedback/index",
+			"style": { "navigationBarTitleText": "建议反馈", "navigationStyle": "custom" }
+		},
+		{
 			"path": "pages/success/index",
 			"style": { "navigationBarTitleText": "成功", "navigationStyle": "custom" }
 		},

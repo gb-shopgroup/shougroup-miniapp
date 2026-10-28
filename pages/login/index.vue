@@ -61,7 +61,7 @@
 <script>
 import { uploadImage } from "@/api/upload.js"		
 import { regUser, getOpenId, getPhone, openIdLogin } from "@/api/group.js"	
-import { cacheMemberLoginInfo } from "@/utils/auth.js"
+import { backAfterLogin, cacheMemberLoginInfo } from "@/utils/auth.js"
 export default {
 	data() {
 		return {
@@ -75,11 +75,16 @@ export default {
 			showAgreementModal: false,
 			pendingAgreementAction: '',
 			isRequesting: false, // 请求锁，防止重复调用
-			pendingScene: '' // 扫码进入待登录的 scene（如门店核销码 shopId=4），登录成功后回跳
+			pendingScene: '', // 扫码进入待登录的 scene（如门店核销码 shopId=4），登录成功后回跳
+			redirect: '' // 来源页路径（含参数），登录后原路返回继续未完成的登录前操作
 		}
 	},
 	onLoad(options) {
 
+		// 来源页：从未登录拦截处跳转过来时携带，登录成功后回跳
+		if(options.redirect){
+			this.redirect = decodeURIComponent(options.redirect)
+		}
 		// 团长id
 		if(options.lid){
 			this.leaderId = options.lid
@@ -265,6 +270,11 @@ export default {
 				// 优先回跳扫码来源页（如门店核销页），保留原 scene 参数
 				if (this.pendingScene) {
 					uni.redirectTo({ url: '/pages/order/verify?scene=' + encodeURIComponent(this.pendingScene) })
+					return
+				}
+				// 其次回跳登录前被拦截的来源页（下单、支付、退款、申请团长等）
+				if (this.redirect) {
+					backAfterLogin(this.redirect)
 					return
 				}
 				// 跳转到团购页面

@@ -91,6 +91,7 @@ import { getPayCache, removePayCache, savePayCache } from "@/utils/payCache.js"
 import { getApplyRefundOrderList, getOpenId, getOrderList, payOrder as requestPayOrder } from "@/api/group.js"
 import { MEMBER_ORDER_TABS, MEMBER_REFUND_TABS, buildMemberOrderListPayload, buildMemberRefundListPayload, canMemberOrderApplyRefund, normalizeMemberOrder } from "@/utils/memberOrder.js"
 import { clearPaidCheckoutSessionState } from "@/utils/groupPurchase.js"
+import { isMemberLoggedIn, requireMemberLogin } from "@/utils/auth.js"
 
 export default {
 	data() {
@@ -110,13 +111,15 @@ export default {
 			pendingRefreshCallback: null,
 			nowTick: Date.now(),
 			countdownTimer: null,
-			isRequesting: false
+			isRequesting: false,
+			loadedOnce: false // 是否已加载过一次（登录返回后补拉用）
 		}
 	},
 	onLoad(options = {}) {
-		const token = uni.getStorageSync('token')
-		if (!token) {
-			uni.redirectTo({ url: '/pages/login/index'})
+		// 订单属于会员数据：未注册/未登录先引导登录，成功后回到订单页（tabBar 页，走 switchTab）
+		if (!isMemberLoggedIn()) {
+			this._lastLoginGuideAt = Date.now()
+			requireMemberLogin({ tip: false, redirect: '/pages/order/index' })
 			return
 		}
 		this.refreshOrders()
@@ -126,6 +129,19 @@ export default {
 	},
 	onShow() {
 		this.startCountdown()
+		if (!isMemberLoggedIn()) {
+			// 未登录兜底：覆盖 token 失效被请求层清掉后回到本页、以及 tabBar 页不重跑 onLoad 的场景。
+			// 用时间戳防重：onLoad 跳转后紧随的 onShow 不会重复跳，用户手动返回后再切回订单 tab 会重新引导
+			const now = Date.now()
+			if (!this._lastLoginGuideAt || now - this._lastLoginGuideAt > 1500) {
+				this._lastLoginGuideAt = now
+				requireMemberLogin({ tip: false, redirect: '/pages/order/index' })
+			}
+			return
+		}
+		this._lastLoginGuideAt = 0
+		// 登录页返回订单页时走 switchTab，不会重跑 onLoad，这里补拉一次
+		if (!this.loadedOnce) this.refreshOrders()
 	},
 	onUnload() {
 		if (this.countdownTimer) clearInterval(this.countdownTimer)
@@ -187,7 +203,8 @@ export default {
 				}
 				const normalized = list.map(normalizeMemberOrder)
 				this.orderList = this.page === 1 ? normalized : this.orderList.concat(normalized)
-			} catch (err) {
+				this.loadedOnce = true
+				} catch (err) {
 				console.log('初始化订单列表失败：', err)
 				uni.showToast({ title: '订单加载失败', icon: 'none' })
 			} finally {
@@ -228,6 +245,7 @@ export default {
 			})
 		},
 		goRefundApply(order) {
+			if(!requireMemberLogin({ tip: '请先登录后再申请退款' })) return
 			const url = '/pages/order/refund?orderNo=' + encodeURIComponent(order.orderNo)
 			uni.navigateTo({
 				url,
@@ -235,6 +253,7 @@ export default {
 			})
 		},
 		goRefundDetail(order) {
+			if(!requireMemberLogin({ tip: '请先登录后再查看售后' })) return
 			const url = '/pages/order/refundDetail?orderNo=' + encodeURIComponent(order.orderNo)
 			uni.navigateTo({
 				url,
@@ -289,6 +308,7 @@ export default {
 			return this.isOrderPayExpired(order) ? 'muted' : order.statusTone
 		},
 		async payOrder(order) {
+			if(!requireMemberLogin({ tip: '请先登录后再支付' })) return
 			if (this.isRequesting) return
 			if (this.isOrderPayExpired(order)) {
 				uni.showToast({ title: '支付已超时，请重新下单', icon: 'none' })

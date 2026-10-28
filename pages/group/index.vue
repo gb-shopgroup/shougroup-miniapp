@@ -159,7 +159,7 @@ import { hasGroupIntroContent, resolveActivityLeaderId } from "@/utils/groupPres
 import { getCartQuantityForGoods, isGoodsSoldOut, normalizeGroupGoodsList, setCartGoodsQuantity, updateCartGoodsQuantity } from "@/utils/groupPurchase.js"
 import { formatGroupDateTime, normalizeRichTextImages } from "@/utils/leaderGroup.js"
 import { getGroupLabelStyle, isMemberGroupOnline, normalizeMemberHomeRecord, resolveMemberHomeLogsData } from "@/utils/memberHome.js"
-import { cacheMemberBoundLeaderId, cacheMemberLoginInfo, pickMemberBoundLeaderId } from "@/utils/auth.js"
+import { cacheMemberBoundLeaderId, cacheMemberLoginInfo, pickMemberBoundLeaderId, requireMemberLogin } from "@/utils/auth.js"
 import { 
 	getGroupShop, 
 	getGroupInfo, 
@@ -489,17 +489,8 @@ export default {
 		addToCart(product, cartContext = null){
 			this.pendingAddCartContext = cartContext
 			
-			// 是否登录
-			const token = uni.getStorageSync('token')
-			if (!token) {
-				// 去注册页面, 携带团购id方便返回
-				const url = '/pages/login/index?id=' + this.groupId + '&lid=' + this.leaderId;
-				uni.navigateTo({
-					url,
-					fail: () => {
-						uni.redirectTo({ url })
-					}
-				})
+			// 是否登录：未注册先引导登录，携带团购 id/团长 id 方便登录后回到该团继续加购
+			if (!requireMemberLogin({ tip: '请先登录后再加购', query: { id: this.groupId, lid: this.leaderId } })) {
 				return
 			}
 			

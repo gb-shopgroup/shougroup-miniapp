@@ -355,6 +355,36 @@ export function closeLeaderGoodsInfo(params) {
 	})
 }
 
+// 团购活动详情-商品上下架：按团购商品行自身 is_close 取反切换（商品表已下架或活动不属于当前团长时抛错）
+// 接口文档：GET /goods/leader/activity/goods/close?goodsId=&groupId=（data 为 null）
+export function closeLeaderActivityGoods(params = {}) {
+	return request2({
+		url: '/goods/leader/activity/goods/close',
+		method: 'GET',
+		data: {
+			goodsId: Number(params.goodsId || params.id || 0),
+			groupId: Number(params.groupId || 0)
+		}
+	})
+}
+
+// 团长端修改商品库存：按SKU维度修改为指定库存，商品主表库存按各SKU库存之和同步
+// 接口文档：POST /goods/leader/update/sku/stock（data 为 null）
+// body LeaderUpdateSkuStockRequest { goodsId, skuStockRequestList: [{ skuId, num }] }
+export function updateLeaderSkuStock(data = {}) {
+	return request2({
+		url: '/goods/leader/update/sku/stock',
+		method: 'POST',
+		data: {
+			goodsId: Number(data.goodsId || 0),
+			skuStockRequestList: (Array.isArray(data.skuList) ? data.skuList : []).map(item => ({
+				skuId: Number(item.id || item.skuId || 0),
+				num: Number(item.num || 0)
+			}))
+		}
+	})
+}
+
 // 商品包装接口已不在最新商品协议内，仅保留导出避免历史页面编译失败
 export function getLeaderGoodsPackageList(params) {
 	return deprecatedGoodsApi('商品包装列表接口')

@@ -148,7 +148,9 @@ export function normalizeLeaderGroupGoods(item = {}) {
 		img: item.img || item.groupImg || item.goodsImg || '',
 		price: Number(item.price || item.groupPrice || 0),
 		price2: Number(item.price2 || item.marketPrice || 0),
-		stock: formatGroupGoodsStock(item)
+		stock: formatGroupGoodsStock(item),
+		// 团购商品行自身的上下架状态（非 0 即已下架），活动详情页据此展示灰色图与上架/下架按钮
+		isClose: Number(item.isClose || 0)
 	}
 }
 
