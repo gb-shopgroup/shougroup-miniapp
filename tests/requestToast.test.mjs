@@ -8,6 +8,8 @@ import fs from 'node:fs'
 const requestSource = fs.readFileSync(new URL('../utils/request.js', import.meta.url), 'utf8')
 const runnableSource = requestSource
 	.replace(/^import env from .*$/m, 'const env = { baseURL: "" }')
+	// 登录失效处理依赖的 auth 工具：测试中用空桩替换（本测试只验证提示机制，不覆盖 401 跳转）
+	.replace(/^import \{.*\} from "\.\/auth\.js"$/m, 'const clearMemberLoginInfo = () => {}; const currentPagePath = () => ""; const goLoginPage = () => {}')
 	.replace('export default request', 'return request')
 
 // 用桩执行一次请求，返回 { toasts, error, resolved }

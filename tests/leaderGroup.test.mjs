@@ -25,7 +25,8 @@ assert.equal(formatGroupTimeRange(start, end), '开始 2026/09/28 08:00\n结束 
 assert.deepEqual(validateGroupTime('', end), { valid: false, message: '请选择开始时间' })
 assert.deepEqual(validateGroupTime(start, ''), { valid: false, message: '请选择结束时间' })
 assert.deepEqual(validateGroupTime(end, start), { valid: false, message: '结束时间必须晚于开始时间' })
-assert.deepEqual(validateGroupTime(Math.floor(new Date(2026, 8, 6, 8, 0, 0, 0).getTime() / 1000), end), { valid: false, message: '开始时间不能早于今天' })
+// 「开始时间不能早于今天」校验已放开（validateGroupTime 中注释，允许补录/修改历史时间团购），不再拦截
+assert.deepEqual(validateGroupTime(Math.floor(new Date(2026, 8, 6, 8, 0, 0, 0).getTime() / 1000), end), { valid: true, message: '' })
 assert.deepEqual(validateGroupTime(start, end), { valid: true, message: '' })
 
 // 团长端订单汇总来自 groupSummaryResponse，不得再用团购价或字面量 0 兜底。
@@ -148,14 +149,14 @@ assert.deepEqual(getLeaderGroupStatus(Object.assign({}, normalized, { isClose: 1
 assert.deepEqual(getLeaderGroupStatus(Object.assign({}, normalized, { isClose: 1 }), (start - 3600) * 1000), { value: 4, text: '已关闭', tone: 'muted' })
 // 时间已过是终态，优先于关闭标记
 assert.deepEqual(getLeaderGroupStatus(Object.assign({}, normalized, { isClose: 1 }), (end + 3600) * 1000), { value: 3, text: '已结束', tone: 'muted' })
-// 关闭不影响操作项：仍是「修改团购信息 + 开启团购 + 复制团购」
+// 修改团购活动入口所有状态都保留，开启/关闭按状态出现
 assert.deepEqual(getLeaderGroupManageActions({ isClose: 1, statusInfo: { value: 4 } }).map(item => item.key), ['edit', 'open', 'copy'])
-assert.deepEqual(getLeaderGroupManageActions({ isClose: 1, statusInfo: { value: 3 } }).map(item => item.key), ['copy'])
-assert.deepEqual(getLeaderGroupManageActions({ isClose: 0, statusInfo: { value: 1 } }).map(item => item.key), ['close', 'copy'])
+assert.deepEqual(getLeaderGroupManageActions({ isClose: 1, statusInfo: { value: 3 } }).map(item => item.key), ['edit', 'copy'])
+assert.deepEqual(getLeaderGroupManageActions({ isClose: 0, statusInfo: { value: 1 } }).map(item => item.key), ['edit', 'close', 'copy'])
 assert.deepEqual(getLeaderGroupManageActions({ isClose: 0, statusInfo: { value: 2 } }).map(item => item.key), ['edit', 'close', 'copy'])
-assert.deepEqual(getLeaderGroupManageActions({ isClose: 0, statusInfo: { value: 3 } }).map(item => item.key), ['copy'])
+assert.deepEqual(getLeaderGroupManageActions({ isClose: 0, statusInfo: { value: 3 } }).map(item => item.key), ['edit', 'copy'])
 assert.deepEqual(getLeaderGroupManageActions({ isClose: 1, statusInfo: { value: 1 } }).map(item => item.key), ['edit', 'open', 'copy'])
-assert.deepEqual(getLeaderGroupManageActions({ isClose: 1, statusInfo: { value: 3 } }).map(item => item.key), ['copy'])
+assert.deepEqual(getLeaderGroupManageActions({ isClose: 1, statusInfo: { value: 3 } }).map(item => item.key), ['edit', 'copy'])
 
 assert.deepEqual(buildLeaderGroupSubmitPayload({
 	id: 9,
@@ -351,15 +352,16 @@ assert.match(addPage, /pointId: 0,/)
 // 编辑态只读：名称/介绍/分类/标签/时间只展示不可改，商品区只允许新增。
 assert.match(addPage, /<text v-else class="name-text">/)
 assert.match(addPage, /:class="\{ required: isAdd \}"/)
-assert.match(addPage, /<view class="intro-tools" v-if="isAdd">/)
-assert.match(addPage, /:read-only="!isAdd"/)
-assert.match(addPage, /<view class="goods-actions" v-if="isAdd">/)
+// 团购介绍已放开为修改团购时也可编辑（intro-tools 不再限定开团态，editor 不再 read-only）
+assert.match(addPage, /<view class="intro-tools">/)
+// 商品操作区不再限定开团态（编辑态内通过 block v-if 只保留新增入口）
+assert.match(addPage, /<view class="goods-actions">/)
 assert.match(addPage, /class="add-goods-outline" @click="openCreateGoods"/)
 assert.match(addPage, /row-readonly/)
 assert.match(addPage, /<picker v-if="isAdd" :range="categoryList"/)
-// 编辑态只读守卫：标签、时间两个弹层（自提点弹层已随功能移除）
-assert.equal((addPage.match(/if \(!this\.isAdd\) return/g) || []).length, 2)
-assert.match(addPage, /编辑态允许调整虚拟跟团数，其余信息只读且原样回传，因此只校验商品。/)
+// 编辑态只读守卫：标签、时间等弹层（自提点弹层已随功能移除）
+assert.equal((addPage.match(/if ?\(!this\.isAdd\)/g) || []).length, 2)
+assert.match(addPage, /编辑态：团购名称\/分类\/开始时间不可改，其余（介绍、物流、结束时间、标签、跟团数、商品上下架与增删）均可修改。/)
 // 编辑态标题与按钮文案区分开团/保存
 assert.match(addPage, /\{\{ isAdd \? '开团' : '修改团购' \}\}/)
 assert.match(addPage, /<button @click="submitForm">\{\{ isAdd \? '开团' : '保存' \}\}<\/button>/)

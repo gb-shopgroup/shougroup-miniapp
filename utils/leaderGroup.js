@@ -112,13 +112,11 @@ export function getLeaderGroupManageActions(group = {}) {
 	const status = Number(statusInfo.value || 0)
 	const isClosed = Number(group.isClose || 0) !== 0
 	const actions = []
+	// 修改团购活动：所有状态都提供入口（已结束也可改；进行中的团购后端会拒绝保存，提交时统一提示）
+	actions.push({ key: 'edit', text: '修改团购活动' })
 	if (status !== 3) {
 		if (isClosed) {
-			actions.push({ key: 'edit', text: '修改团购信息' })
 			actions.push({ key: 'open', text: '开启团购' })
-		} else if (status === 2) {
-			actions.push({ key: 'edit', text: '修改团购信息' })
-			actions.push({ key: 'close', text: '关闭团购' })
 		} else {
 			actions.push({ key: 'close', text: '关闭团购' })
 		}

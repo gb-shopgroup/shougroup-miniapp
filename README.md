@@ -73,8 +73,13 @@ shougroup-miniapp/
 | production | `https://api.shopgroup.com.cn` |
 
 微信小程序内会根据 `wx.getAccountInfoSync().miniProgram.envVersion` 自动判断：
-- `develop` → development
-- `trial` / `release` → production
+- `develop`（开发版/真机调试）→ development → 测试域名
+- `trial`（上传代码后的体验版）→ test → 测试域名
+- `release`（审核通过上线后的正式版）→ production → 生产域名
+
+> 提示：微信的**审核包**在审核过程中 `envVersion` 同样是 `trial`，会走测试域名。若希望审核人员看到生产环境数据，
+> 在**提交审核前**的上传包里执行 `uni.setStorageSync('sg_api_env', 'production')`（重启小程序生效，
+> 仅对开发版/体验版有效，正式版始终生产域名）；恢复自动判断用 `uni.removeStorageSync('sg_api_env')`。
 
 ## 快速开始
 

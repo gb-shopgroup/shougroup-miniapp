@@ -25,16 +25,24 @@ switch (version) {
 		env = 'development'
 		break
 	case 'trial':
-		// 微信小程序-体验版及审核包。审核需要看到真实可体验的运营内容。
-		env = 'production'
+		// 微信小程序-体验版（上传代码后自己/内部验收）：走测试环境
+		env = 'test'
 		break
 	case 'release':
-		// 微信小程序-正式版
+		// 微信小程序-正式版（审核通过上线后）：走生产环境
 		env = 'production'
 		break
 	default:
 		// 默认正式版
 		env = 'production'
+}
+// 手动覆盖：只对开发版/体验版生效，正式版忽略（防止线上误打到测试环境）。
+// 提交审核前若希望审核人员看到生产数据，在控制台执行一次后重启小程序即可：
+//   uni.setStorageSync('sg_api_env', 'production')   // 指到生产
+//   uni.removeStorageSync('sg_api_env')              // 恢复按 envVersion 自动判断
+if (env !== 'production') {
+	const override = String(uni.getStorageSync('sg_api_env') || '').trim()
+	if (config[override]) env = override
 }
 // #endif
 
