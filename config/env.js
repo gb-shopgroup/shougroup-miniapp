@@ -4,16 +4,18 @@ let env = process.env.NODE_ENV
 
 // 开发环境 / 生产环境 接口地址
 const config = {
-	development: {
-		baseURL: "https://test.api.shopgroup.com.cn", // 测试接口
-		//baseURL: "http://127.0.0.1:8080", // 开发接口
-	},
-	test: {
-		baseURL: "https://test.api.shopgroup.com.cn", // 测试接口
-	},
-	production: {
-		baseURL: "https://api.shopgroup.com.cn", // 正式接口
-	}
+    development: {
+        //baseURL: "http://127.0.0.1:8080", // 开发接口
+        baseURL: "https://test.api.shopgroup.com.cn", // 测试接口
+        //baseURL: "https://api.shopgroup.com.cn", // 测试接口-为审核使用
+    },
+    test: {
+        baseURL: "https://test.api.shopgroup.com.cn", // 测试接口
+        //baseURL: "https://api.shopgroup.com.cn", // 测试接口-为审核使用
+    },
+    production: {
+        baseURL: "https://api.shopgroup.com.cn", // 正式接口
+    }
 }
 
 // #ifdef MP-WEIXIN
@@ -24,10 +26,11 @@ switch (version) {
 		// 微信小程序-开发版
 		env = 'development'
 		break
-	case 'trial':
-		// 微信小程序-体验版（上传代码后自己/内部验收）：走测试环境
-		env = 'test'
-		break
+    case 'trial':
+        // 微信小程序-体验版及审核包。审核需要看到真实可体验的运营内容。
+        env = 'test'
+        //env = 'production'
+        break
 	case 'release':
 		// 微信小程序-正式版（审核通过上线后）：走生产环境
 		env = 'production'

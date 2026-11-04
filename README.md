@@ -72,14 +72,24 @@ shougroup-miniapp/
 | test | `https://test.api.shopgroup.com.cn` |
 | production | `https://api.shopgroup.com.cn` |
 
-微信小程序内会根据 `wx.getAccountInfoSync().miniProgram.envVersion` 自动判断：
-- `develop`（开发版/真机调试）→ development → 测试域名
-- `trial`（上传代码后的体验版）→ test → 测试域名
-- `release`（审核通过上线后的正式版）→ production → 生产域名
+环境在小程序**运行时**按 `wx.getAccountInfoSync().miniProgram.envVersion` 自动判定（同一份代码包，无需为上线单独打包）：
 
-> 提示：微信的**审核包**在审核过程中 `envVersion` 同样是 `trial`，会走测试域名。若希望审核人员看到生产环境数据，
-> 在**提交审核前**的上传包里执行 `uni.setStorageSync('sg_api_env', 'production')`（重启小程序生效，
-> 仅对开发版/体验版有效，正式版始终生产域名）；恢复自动判断用 `uni.removeStorageSync('sg_api_env')`。
+| envVersion | 版本类型 | 接口环境 | 域名 |
+| --- | --- | --- | --- |
+| `develop` | 开发者工具 / 真机预览 / 真机调试 | development | 测试 |
+| `trial` | **体验版**，以及**提交审核后的审核版本** | test | 测试 |
+| `release` | 审核通过上线后的**正式版** | production | 生产 |
+
+> ⚠️ 微信的坑：**审核版本的 `envVersion` 返回的是 `trial`**（审核员通过体验通道打开审核包），前端无法区分体验版与审核版。
+> 若要求「审核期间走生产域名」，必须上传两个包（代码相同，仅 trial 指向不同）：
+> 1. **验收包**（trial→测试）：上传后在公众平台设为「体验版」，走测试环境；
+> 2. **提审包**（trial→生产）：执行 `node scripts/patch-dist-env.mjs --trial=production` 后上传，用该版本「提交审核」，审核期间走生产环境。
+> 审核通过全量发布后是 `release` → 生产，不受影响。提审后如需继续用体验版验收，可在「版本管理」把体验版切回验收包。
+>
+> 其它说明：
+> 1. 「提交审核」不会重新打包，用的是上传的同一份代码包，版本类型由微信后台决定，环境只能在小程序运行时判定。
+> 2. 读取 `envVersion` 失败或非微信平台时，按 `NODE_ENV` 兜底（development→测试，其余→生产），并可用打包注入的 `VUE_APP_API_ENV` / `UNI_APP_API_ENV` 覆盖（取值为 development / test / production）。
+> 3. 调试开关 `uni.setStorageSync('sg_api_env', 'production')` **仅开发版生效**（重启小程序后起效），体验版/审核版/正式版一律忽略。
 
 ## 快速开始
 
@@ -96,7 +106,14 @@ HBuilderX **运行 → 运行到手机或模拟器**，或使用微信开发者�
 ### 发布
 
 1. HBuilderX **发行 → 小程序-微信**，生成 `unpackage/dist/build/mp-weixin`；
-2. 用微信开发者工具打开该目录，上传代码，并在微信公众平台提交审核。
+2. **验收包上传**：用微信开发者工具打开该目录上传 → 公众平台将该版本设为「体验版」→ 扫码验收（走测试环境域名）；
+3. **提审包上传**：执行 `node scripts/patch-dist-env.mjs --trial=production` 后再次上传（版本号递增）→ 公众平台对**本次上传**点「提交审核」→ 审核期间走生产环境域名；
+4. 审核通过后全量发布 → 线上正式版（`release`）走生产环境域名；
+5. 如需继续用体验版验收测试环境：公众平台「版本管理」把体验版切回第 2 步的验收包，或重新发行后执行 `--trial=test` 再上传。
+
+> 域名白名单（微信公众平台 → 开发管理 → 开发设置 → 服务器域名）：`request 合法域名` 必须同时包含
+> `https://api.shopgroup.com.cn`（生产）与 `https://test.api.shopgroup.com.cn`（测试/体验版），
+> 缺少生产域名会导致审核版/正式版所有接口请求失败。
 
 ### 运行测试
 

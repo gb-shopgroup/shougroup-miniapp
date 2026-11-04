@@ -28,6 +28,7 @@ import {
 	reconcileSelectedCartKeys,
 	removeSelectedCartGoods,
 	resolveSelectedPickupPointId,
+	resolveSharedGoodsId,
 	setCartGoodsQuantity,
 	syncCheckoutGoodsToSessionCart,
 	updateCartGoodsQuantity
@@ -76,6 +77,14 @@ assert.deepEqual(normalizeGroupPickupPoint({
 assert.equal(resolveSelectedPickupPointId([{ id: 5 }, { id: 8 }], 8), 8)
 assert.equal(resolveSelectedPickupPointId([{ id: 5 }, { id: 8 }], 3), 0)
 assert.equal(resolveSelectedPickupPointId([{ id: 5 }], 0), 0)
+
+// 商品分享卡片：普通 query 与扫码 scene 都要能取到 goodsId，用于落地定位商品
+assert.equal(resolveSharedGoodsId({ id: '7', lid: '8', goodsId: '104' }), 104)
+assert.equal(resolveSharedGoodsId({ id: '7' }), 0)
+assert.equal(resolveSharedGoodsId({}), 0)
+assert.equal(resolveSharedGoodsId({ scene: encodeURIComponent('id=7&lid=8&goodsId=104') }), 104)
+assert.equal(resolveSharedGoodsId({ scene: 'id=7&goodsId=9' }), 9)
+assert.equal(resolveSharedGoodsId({ scene: '%E0%A4%A' }), 0)
 
 assert.deepEqual(normalizeGroupGoods({
 	id: 7,

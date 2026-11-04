@@ -41,8 +41,9 @@
 
 			<view class="status-row">
 				<text class="status-text" :class="item.statusInfo.tone">{{ item.statusInfo.text }}</text>
-				<view class="card-actions">
-					<view v-if="item.statusInfo.value === 1" class="outline-btn" @click.stop="shareLeaderGroupPosterImg(item)">生成海报</view>
+				<!-- 分享/生成海报仅在线（活动中）的团购展示；未开始/已结束/已关闭不提供分享 -->
+				<view v-if="item.statusInfo.value === 1" class="card-actions">
+					<view class="outline-btn" @click.stop="shareLeaderGroupPosterImg(item)">生成海报</view>
 					<button class="outline-btn share-btn" open-type="share" :data-share="shareData(item)">分享</button>
 				</view>
 			</view>
@@ -50,7 +51,7 @@
 			<view class="metrics">
 				<text>实际收入： ¥{{ formatAmount(item.realIncome) }}</text>
 				<text>退款金额： ¥{{ formatAmount(item.refundAmount) }}</text>
-				<text>跟团人数： {{ item.joinCount }}</text>
+				<text>跟团次数： {{ item.joinCount }}</text>
 			</view>
 		</view>
 

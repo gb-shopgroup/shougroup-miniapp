@@ -15,11 +15,14 @@
 				<image class="leader-action-icon" src="/static/image/leader_group_service.png" mode="aspectFit"></image>
 				<text>客服</text>
 			</button>
-			<view class="leader-action-button" @click="shareToMomentsPoster">
+			<!-- 分享/朋友圈仅在线（活动中）的团购展示 -->
+			<!-- 朋友圈：生成团购海报，预览后经图片菜单发朋友圈 -->
+			<view v-if="isGroupOnline" class="leader-action-button" @click="shareToMomentsPoster">
 				<image class="leader-action-icon" src="/static/image/leader_group_moments.png" mode="aspectFit"></image>
 				<text>朋友圈</text>
 			</view>
-			<button class="leader-action-button" open-type="share" :data-share="shareData">
+			<!-- 分享：原生转发整团小程序卡片，点一下直接进微信「选择朋友」 -->
+			<button v-if="isGroupOnline" class="leader-action-button" open-type="share">
 				<image class="leader-action-icon" src="/static/image/leader_group_top_share.png" mode="aspectFit"></image>
 				<text>分享</text>
 			</button>
@@ -34,6 +37,8 @@
 		<view class="title-section">
 			<view class="title-row">
 				<text class="group-title">{{ group.name }}</text>
+				<!-- 终态标识：已结束（当前时间大于结束时间）/ 已关闭（团长下架），两者都不展示商品分享 -->
+				<text v-if="statusBadgeText" class="status-badge">{{ statusBadgeText }}</text>
 				<text class="self-badge">{{ pickupText }}</text>
 			</view>
 			<text class="time">{{ group.timeText }}</text>
@@ -47,7 +52,11 @@
 		</view>
 
 		<view class="goods-list">
-			<view class="goods" v-for="goods in group.goods" :key="goods.gid">
+			<view
+				class="goods"
+				:class="{ 'goods-focus': shareFocusGoodsId > 0 && Number(goods.gid || 0) === shareFocusGoodsId }"
+				v-for="goods in group.goods"
+				:key="goods.gid">
 				<view class="goods-img-wrap">
 					<image class="goods-img" :class="{ 'goods-img-closed': isGoodsClosed(goods) }" :src="goods.img" mode="aspectFill"></image>
 					<text class="goods-stock">库存{{ goods.stock || '不限' }}</text>
@@ -60,7 +69,7 @@
 						<text v-if="!isGoodsClosed(goods)" class="goods-op" @click.stop="openStockDialog(goods)">修改库存</text>
 					</view>
 				</view>
-				<view class="goods-share" @click.stop="openShareSheet(goods)">
+				<view v-if="!statusBadgeText" class="goods-share" @click.stop="openShareSheet(goods)">
 					<image class="goods-share-icon" src="/static/image/leader_group_share.png" mode="aspectFit"></image>
 				</view>
 			</view>
@@ -96,7 +105,8 @@
 			<text class="bottom-amount">¥{{ incomeText }}</text>
 			<text class="bottom-visits">{{ visitorText }}</text>
 		</view>
-		<button class="bottom-share" open-type="share" :data-share="shareData">
+		<!-- 底部分享：原生转发整团小程序卡片 -->
+		<button v-if="isGroupOnline" class="bottom-share" open-type="share">
 			<image class="bottom-share-icon" src="/static/image/leader_group_wechat.png" mode="aspectFit"></image>
 			<text>分享</text>
 		</button>
@@ -140,8 +150,11 @@
 		</view>
 	</view>
 
+	<!-- 商品分享卡片封面画布：type=2d 同层渲染，可真正隐藏，不会盖住页面 -->
+	<canvas type="2d" id="goodsShareCanvas" class="goods-share-canvas"></canvas>
+
 	<PosterImgDialog ref="imgDialogRef"></PosterImgDialog>
-	<PosterDialog ref="posterDialogRef" @poster="shareLeaderGroupPosterImg"></PosterDialog>
+	<PosterDialog ref="posterDialogRef" :cover-ready="goodsShareCoverReady" @poster="shareLeaderGroupPosterImg" @close="clearGoodsShareContext"></PosterDialog>
 </view>
 </template>
 
@@ -158,8 +171,12 @@ import {
 	shareLeaderGroupGoodsPoster,
 	updateLeaderSkuStock
 } from '@/api/leader.js'
-import { getLeaderGroupManageActions, normalizeLeaderGroup, normalizeRichTextImages } from '@/utils/leaderGroup.js'
+import { getLeaderGroupCoverImages, getLeaderGroupManageActions, normalizeLeaderGroup, normalizeRichTextImages } from '@/utils/leaderGroup.js'
 import { normalizeLeaderSkuDraftList } from '@/utils/leaderProduct.js'
+import { formatShareSales, renderShareCard, SHARE_CARD_HEIGHT, SHARE_CARD_WIDTH } from '@/utils/shareCard.js'
+
+// 分享卡片兜底封面：没有商品图/团购图时也要有图，否则微信会回退成当前页面截图
+const SHARE_FALLBACK_COVER = 'https://shopgroup.obs.cn-north-9.myhuaweicloud.com/logo.png'
 
 export default {
 	components: { PosterImgDialog, PosterDialog },
@@ -170,6 +187,21 @@ export default {
 			manageSheetVisible: false,
 			isRequesting: false,
 			shareLoading: false,
+			// 商品分享面板的转发上下文：面板打开时设置，关闭时清理（onShareAppMessage 优先用它）
+			activeGoodsShare: null,
+			// 商品分享卡片封面（canvas 临时文件），键为 goodsId，避免转发到别的商品
+			goodsShareCovers: {},
+			// 正在生成封面的商品（同一件商品不重复画）
+			goodsSharePreparing: 0,
+			// 当前面板这件商品的封面是否已就绪：未就绪先禁用「分享给微信」，
+			// 避免分享出去的是纯商品图卡片而不是带价格/已售的海报卡片
+			goodsShareCoverReady: false,
+			goodsShareCoverTimer: null,
+			// 后台预生成封面的定时器
+			preloadGoodsShareTimer: null,
+			// 点分享图标时高亮的商品（给「点的就是这件」的即时反馈）
+			shareFocusGoodsId: 0,
+			shareFocusTimer: null,
 			// 修改库存弹窗状态
 			stockDialogVisible: false,
 			stockGoods: {},
@@ -187,6 +219,17 @@ export default {
 		pickupText(){
 			return Number(this.group.pickup || 1) === 1 ? '自提' : '邮递'
 		},
+		// 团购是否在线（活动中）：分享/朋友圈入口仅此状态展示
+		isGroupOnline(){
+			return Number((this.group.statusInfo || {}).value || 0) === 1
+		},
+		// 活动名后的终态标识：当前时间大于结束时间→已结束；团长下架→已关闭。未开始/活动中不展示
+		statusBadgeText(){
+			const value = Number((this.group.statusInfo || {}).value || 0)
+			if (value === 3) return '已结束'
+			if (value === 4) return '已关闭'
+			return ''
+		},
 		// 跟团记录：活动详情接口下发的 followRecords（真实订单数据，按购买时间倒序，最新 50 条）
 		followRecords(){
 			return Array.isArray(this.group.followRecords) ? this.group.followRecords : []
@@ -196,7 +239,7 @@ export default {
 			return Number(this.group.totalAmount || 0).toFixed(2)
 		},
 		visitorText(){
-			return `${Number(this.group.order || 0)}人来过`
+			return `${Number(this.group.order || 0)}次购买`
 		},
 		leaderDisplayName(){
 			return this.group.shopName || uni.getStorageSync('leader_shop') || this.group.name || '团购详情'
@@ -216,7 +259,7 @@ export default {
 			if (activityLeaderId > 0) params.push(`lid=${encodeURIComponent(activityLeaderId)}`)
 			return {
 				title: this.group.name,
-				imageUrl: this.group.img,
+				imageUrl: this.shareCover(),
 				path: `/pages/group/index?${params.join('&')}`
 			}
 		},
@@ -227,7 +270,7 @@ export default {
 			return {
 				title: this.group.name || this.leaderDisplayName,
 				query: query.join('&'),
-				imageUrl: this.group.img || this.leaderAvatarSrc
+				imageUrl: this.shareCover()
 			}
 		},
 		manageActions(){
@@ -238,11 +281,35 @@ export default {
 		this.groupId = Number(options.id || 0)
 	},
 	onShow() {
+		// 从微信转发面板返回时，收起可能还停留的分享面板，回到干净的详情页
+		const posterDialog = this.$refs.posterDialogRef
+		if (posterDialog && posterDialog.showModal) posterDialog.closeModal()
 		// 编辑保存后返回会复用详情页，onLoad 不会重跑；统一在显示时拉取，关闭的团也能展示新增商品。
 		if (this.groupId > 0) this.initDetail()
 	},
+	// 原生转发入口：顶部/底部分享（整团卡片）、商品面板「分享给微信」（该商品卡片）、右上角胶囊菜单。
+	// 商品分享面板内的「分享给微信」优先取按钮 dataset，保证转发的一定是这件商品
 	onShareAppMessage(res) {
-		if (res.from === 'button') return res.target.dataset.share
+		const dataset = (res && res.target && res.target.dataset) || {}
+		const datasetGoodsId = Number(dataset.goodsId || 0)
+		if (datasetGoodsId > 0) {
+			return this.buildGoodsShareCard({
+				goodsId: datasetGoodsId,
+				name: dataset.name || '',
+				img: dataset.img || '',
+				cover: this.getGoodsShareCover(datasetGoodsId)
+			})
+		}
+		// 胶囊菜单转发：面板打开期间沿用当前商品上下文
+		const goods = this.activeGoodsShare
+		if (goods && goods.goodsId > 0) {
+			return this.buildGoodsShareCard({
+				goodsId: goods.goodsId,
+				name: goods.name,
+				img: goods.img,
+				cover: this.getGoodsShareCover(goods.goodsId)
+			})
+		}
 		return this.shareData
 	},
 	onShareTimeline() {
@@ -253,6 +320,8 @@ export default {
 			try {
 				const res = await getLeaderGroupInfo({ groupId: this.groupId })
 				this.group = normalizeLeaderGroup(res.data || {})
+				// 商品都到齐了再后台画分享封面，点分享时不用等
+				this.preloadGoodsShareCovers()
 			} catch (err) {
 				console.log('初始化团详情失败：', err)
 			}
@@ -336,22 +405,173 @@ export default {
 				}
 			})
 		},
-		async openShareSheet(goods){
-			if(this.shareLoading || !this.group.id || !goods || !goods.gid) return
-			this.shareLoading = true
-			uni.showLoading({ title: '加载海报中...', mask: true })
-			try {
-				// 点击行的 gid 是商品 ID；不能传团购商品关联 ID，也不能回退整团封面。
-				const res = await shareLeaderGroupGoodsPoster({ groupId: this.group.id, goodsId: goods.gid })
-				if (typeof res.data !== 'string' || !res.data.trim()) throw new Error('商品海报为空')
-				this.$refs.posterDialogRef.show({ ...this.group, goodsId: goods.gid, name: goods.gname || this.group.name }, res.data)
-			} catch (err) {
-				console.log('打开分享失败：', err)
-				uni.showToast({ title: '商品分享图加载失败，请重试', icon: 'none' })
-			} finally {
-				this.shareLoading = false
-				uni.hideLoading()
+		// 商品行分享箭头：立即弹出「分享给微信 / 发朋友圈海报」面板；
+		// 海报不在打开时预生成，点「发朋友圈海报」时才调接口（见 shareLeaderGroupPosterImg）
+		openShareSheet(goods){
+			if(!this.group.id || !goods || !goods.gid) return
+			const goodsId = Number(goods.gid || 0)
+			this.highlightSharedGoods(goodsId)
+			this.activeGoodsShare = {
+				goodsId,
+				name: goods.gname || this.group.name,
+				price: Number(goods.price || 0),
+				img: goods.img || this.group.img || ''
 			}
+			// 封面没就绪前先禁用「分享给微信」，避免分享出去的是纯商品图卡片
+			this.goodsShareCoverReady = !!this.getGoodsShareCover(goodsId)
+			clearTimeout(this.goodsShareCoverTimer)
+			// 兜底：3 秒还画不出来也放开，避免老基础库下完全无法分享
+			this.goodsShareCoverTimer = setTimeout(() => {
+				this.goodsShareCoverReady = true
+			}, 3000)
+			this.$refs.posterDialogRef.show({ ...this.group, goodsId, name: goods.gname || this.group.name, img: this.activeGoodsShare.img })
+			// 面板弹出的同时开始画分享封面（含价格/已售），画好即放开按钮
+			this.prepareGoodsShareCover(goods)
+		},
+		// 分享面板关闭后清理转发上下文，恢复整团转发
+		clearGoodsShareContext(){
+			this.activeGoodsShare = null
+		},
+		// 点分享图标时高亮这件商品 2 秒，避免「点了不知道点的是哪件」
+		highlightSharedGoods(goodsId){
+			const id = Number(goodsId || 0)
+			if (!(id > 0)) return
+			this.shareFocusGoodsId = id
+			clearTimeout(this.shareFocusTimer)
+			this.shareFocusTimer = setTimeout(() => {
+				if (this.shareFocusGoodsId === id) this.shareFocusGoodsId = 0
+			}, 2000)
+		},
+		// 商品维度小程序卡片：路径带上 goodsId，C端打开后定位并高亮该商品
+		buildGoodsShareCard({ goodsId, name, img, cover }){
+			if(!(goodsId > 0)) return this.shareData
+			const params = [`id=${encodeURIComponent(this.group.id || '')}`]
+			const lid = Number(this.group.lid || this.group.leaderId || 0)
+			if (lid > 0) params.push(`lid=${encodeURIComponent(lid)}`)
+			params.push(`goodsId=${encodeURIComponent(goodsId)}`)
+			return {
+				// 标题只放商品名：价格/已售都在封面海报里，标题不再重复
+				title: name || this.group.name || '团购活动',
+				// 封面必须用 canvas 生成的海报（商品名 + 已售N单 + 商品图 + 价格 + 立即跟团）
+				imageUrl: cover || this.shareCover(img),
+				path: `/pages/group/index?${params.join('&')}`
+			}
+		},
+		// 当前商品对应的卡片封面（按商品缓存，避免串图）
+		getGoodsShareCover(goodsId){
+			const id = Number(goodsId || 0)
+			if (!(id > 0)) return ''
+			return this.goodsShareCovers[id] || ''
+		},
+		// 商品列表就绪后后台串行预生成封面：原生转发点下去就发，
+		// 提前画好卡片才会稳定是海报形式（全程静默，页面无可见变化）
+		preloadGoodsShareCovers(){
+			const list = (Array.isArray(this.group.goods) ? this.group.goods : []).slice(0, 20)
+			if (!list.length) return
+			clearTimeout(this.preloadGoodsShareTimer)
+			this.preloadGoodsShareTimer = setTimeout(() => {
+				list.reduce((chain, item) => chain.then(() => this.prepareGoodsShareCover(item)), Promise.resolve())
+			}, 400)
+		},
+		// 打开分享面板时预生成封面：转发卡片只能放一张 5:4 图片，
+		// 价格/已售必须画进图里，所以要在用户点「分享给微信」前准备好
+		async prepareGoodsShareCover(goods){
+			const goodsId = Number((goods && goods.gid) || 0)
+			if (!(goodsId > 0)) return
+			if (this.getGoodsShareCover(goodsId)) return
+			if (this.goodsSharePreparing === goodsId) return
+			this.goodsSharePreparing = goodsId
+			try {
+				const canvas = await this.getShareCanvasNode()
+				// 拿不到 2d 画布节点（老基础库）就跳过，分享时回退商品图
+				if (!canvas) return
+				const imageInfo = await this.getShareImageInfo(goods.img)
+				await renderShareCard(canvas, {
+					pixelRatio: this.getSharePixelRatio(),
+					name: goods.gname || this.group.name || '',
+					price: goods.price,
+					soldText: formatShareSales(this.group.joinTimes),
+					imagePath: imageInfo ? imageInfo.path : '',
+					imageWidth: imageInfo ? imageInfo.width : 0,
+					imageHeight: imageInfo ? imageInfo.height : 0
+				})
+				const path = await this.exportShareCard(canvas)
+				// 按商品缓存，连续点不同商品也不会串图
+				if (path) {
+					this.goodsShareCovers = Object.assign({}, this.goodsShareCovers, { [goodsId]: path })
+					// 面板正开着的就是这件商品：封面好了立刻放开「分享给微信」
+					if (this.activeGoodsShare && Number(this.activeGoodsShare.goodsId) === goodsId) {
+						this.goodsShareCoverReady = true
+					}
+				}
+			} catch (err) {
+				console.log('生成商品分享封面失败：', err)
+			} finally {
+				if (this.goodsSharePreparing === goodsId) this.goodsSharePreparing = 0
+			}
+		},
+		// 取 type="2d" 画布节点：同层渲染，页面里能真正隐藏，不会像旧版 canvas 那样盖住页面
+		getShareCanvasNode(){
+			return new Promise(resolve => {
+				if (typeof uni.createSelectorQuery !== 'function') {
+					resolve(null)
+					return
+				}
+				uni.createSelectorQuery()
+					.in(this)
+					.select('#goodsShareCanvas')
+					.fields({ node: true, size: true })
+					.exec(res => resolve((res && res[0] && res[0].node) || null))
+			})
+		},
+		// 按设备像素比绘制，保证卡片清晰度
+		getSharePixelRatio(){
+			try {
+				const info = uni.getSystemInfoSync()
+				return Number(info && info.pixelRatio) || 2
+			} catch (err) {
+				return 2
+			}
+		},
+		// 商品图下载成本地路径 + 尺寸（画进 canvas 前需要真实宽高做裁剪）
+		getShareImageInfo(src){
+			if (!src || typeof uni.getImageInfo !== 'function') return Promise.resolve(null)
+			return new Promise(resolve => {
+				uni.getImageInfo({
+					src,
+					success: res => resolve({ path: res.path, width: res.width, height: res.height }),
+					fail: () => resolve(null)
+				})
+			})
+		},
+		// 画布导出为 5:4 临时图片，直接给 onShareAppMessage 的 imageUrl 用
+		exportShareCard(canvas){
+			return new Promise(resolve => {
+				uni.canvasToTempFilePath({
+					canvas,
+					// 750x600（5:4）：清晰度够用，同时控制体积，避免卡片封面过大
+					destWidth: SHARE_CARD_WIDTH * 1.5,
+					destHeight: SHARE_CARD_HEIGHT * 1.5,
+					fileType: 'jpg',
+					quality: 0.85,
+					success: res => resolve(res.tempFilePath || ''),
+					fail: err => {
+						console.log('导出商品分享封面失败：', err)
+						resolve('')
+					}
+				}, this)
+			})
+		},
+		// 分享卡片封面：商品图优先，其次团购图/活动图，最后官方 logo。
+		// 封面为空时微信会回退成“当前页面截图”，所以必须保底一张图。
+		shareCover(img = ''){
+			const candidates = [
+				img,
+				this.group.img,
+				...getLeaderGroupCoverImages(this.group)
+			]
+			const cover = candidates.find(item => typeof item === 'string' && item.trim())
+			return cover || SHARE_FALLBACK_COVER
 		},
 		async shareToMomentsPoster(){
 			if(!this.group.id) return
@@ -367,9 +587,19 @@ export default {
 			}
 		},
 		async shareLeaderGroupPosterImg(item){
-			// 商品分享弹窗已经取得对应商品图，预览直接复用，避免再生成整团海报。
+			// 商品维度：点「发朋友圈海报」时才生成该商品的海报，预览后经图片菜单分享/保存
 			if(item.goodsId){
-				this.$refs.imgDialogRef.show(item.img)
+				uni.showLoading({ title: '生成海报中...', mask: true })
+				try {
+					const res = await shareLeaderGroupGoodsPoster({ groupId: this.group.id, goodsId: item.goodsId })
+					if (typeof res.data !== 'string' || !res.data.trim()) throw new Error('商品海报为空')
+					this.$refs.imgDialogRef.show(res.data)
+				} catch (err) {
+					console.log('生成商品海报失败：', err)
+					uni.showToast({ title: '生成海报失败', icon: 'none' })
+				} finally {
+					uni.hideLoading()
+				}
 				return
 			}
 			uni.showLoading({ title: '生成海报中...', mask: true })
@@ -692,6 +922,15 @@ export default {
 	border-radius: 3rpx;
 	color: #16a34a;
 	background: #e7f7ec;
+	font-size: 20rpx;
+}
+
+/* 活动终态标识：已结束/已关闭 */
+.status-badge {
+	padding: 2rpx 8rpx;
+	border-radius: 3rpx;
+	color: #999;
+	background: #f2f2f2;
 	font-size: 20rpx;
 }
 
@@ -1087,5 +1326,24 @@ export default {
 
 .stock-submit.disabled {
 	opacity: .6;
+}
+
+/* 点分享图标时，被点商品短暂高亮（2 秒），明确指向哪件商品要分享 */
+.goods.goods-focus {
+	background: #eafff1 !important;
+	box-shadow: 0 0 0 4rpx #22c55e;
+}
+
+/* 分享卡片封面画布：type=2d 同层渲染，可以真正隐藏；
+   CSS 尺寸压到 1px 再配合透明，即使透明度不生效也只剩 1px 不可见点 */
+.goods-share-canvas {
+	position: fixed;
+	left: -9999px;
+	top: 0;
+	width: 1px;
+	height: 1px;
+	opacity: 0;
+	pointer-events: none;
+	z-index: -1;
 }
 </style>

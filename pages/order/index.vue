@@ -30,8 +30,14 @@
 		</view>
 	</view>
 	<view class="page">
-		<view class="order-list">
-			<view class="order-card" v-for="order in orderList" :key="order.orderNo" @click="goOrderDetail(order)">
+		<!-- 未登录：展示引导空态，不自动跳登录页（微信登录规范：允许不登录停留，用户主动点击才进入登录） -->
+		<view class="empty-state login-empty" v-if="!isLoggedIn">
+			<text class="login-empty-text">登录后查看您的团购订单</text>
+			<view class="login-empty-btn" @click="goLogin">去登录</view>
+		</view>
+		<template v-else>
+			<view class="order-list">
+				<view class="order-card" v-for="order in orderList" :key="order.orderNo" @click="goOrderDetail(order)">
 				<view class="order-title-row">
 					<view>跟团号：<text class="group-no">{{ order.orderNo }}</text></view>
 					<view class="order-status-pill" :class="orderStatusTone(order)">{{ orderStatusText(order) }}</view>
@@ -77,11 +83,12 @@
 						<text class="action-btn confirm3" v-else-if="isOrderPayExpired(order)">支付已超时</text>
 											</view>
 				</view>
+				</view>
 			</view>
-		</view>
-		<view class="empty-state" v-if="!loading && orderList.length === 0">暂无订单</view>
-		<view class="load-more" v-if="hasMore">上拉加载更多...</view>
-		<view class="no-more" v-else-if="orderList.length > 0">没有更多了</view>
+			<view class="empty-state" v-if="!loading && orderList.length === 0">暂无订单</view>
+			<view class="load-more" v-if="hasMore">上拉加载更多...</view>
+			<view class="no-more" v-else-if="orderList.length > 0">没有更多了</view>
+		</template>
 	</view>
 </view>
 </template>
@@ -112,34 +119,28 @@ export default {
 			nowTick: Date.now(),
 			countdownTimer: null,
 			isRequesting: false,
-			loadedOnce: false // 是否已加载过一次（登录返回后补拉用）
+			loadedOnce: false, // 是否已加载过一次（登录返回后补拉用）
+			isLoggedIn: false // 登录态：未登录展示页内引导空态，不再自动跳登录页
 		}
 	},
 	onLoad(options = {}) {
-		// 订单属于会员数据：未注册/未登录先引导登录，成功后回到订单页（tabBar 页，走 switchTab）
-		if (!isMemberLoggedIn()) {
-			this._lastLoginGuideAt = Date.now()
-			requireMemberLogin({ tip: false, redirect: '/pages/order/index' })
-			return
-		}
-		this.refreshOrders()
+		// 微信登录规范：未登录允许停留在本页浏览空态，用户主动点「去登录」才进入登录页；
+		// 取消登录后回到本页不再被弹回，避免「返回无效」的循环
+		this.isLoggedIn = isMemberLoggedIn()
+		if (this.isLoggedIn) this.refreshOrders()
 	},
 	onPullDownRefresh() {
+		if (!this.isLoggedIn) {
+			uni.stopPullDownRefresh()
+			return
+		}
 		this.refreshOrders(() => uni.stopPullDownRefresh())
 	},
 	onShow() {
 		this.startCountdown()
-		if (!isMemberLoggedIn()) {
-			// 未登录兜底：覆盖 token 失效被请求层清掉后回到本页、以及 tabBar 页不重跑 onLoad 的场景。
-			// 用时间戳防重：onLoad 跳转后紧随的 onShow 不会重复跳，用户手动返回后再切回订单 tab 会重新引导
-			const now = Date.now()
-			if (!this._lastLoginGuideAt || now - this._lastLoginGuideAt > 1500) {
-				this._lastLoginGuideAt = now
-				requireMemberLogin({ tip: false, redirect: '/pages/order/index' })
-			}
-			return
-		}
-		this._lastLoginGuideAt = 0
+		// tabBar 页不重跑 onLoad：每次显示同步登录态（覆盖 token 失效被请求层清掉的场景）
+		this.isLoggedIn = isMemberLoggedIn()
+		if (!this.isLoggedIn) return
 		// 登录页返回订单页时走 switchTab，不会重跑 onLoad，这里补拉一次
 		if (!this.loadedOnce) this.refreshOrders()
 	},
@@ -157,6 +158,12 @@ export default {
 		}
 	},
 	methods: {
+		// 用户主动点击「去登录」：符合微信登录规范（登录必须由用户手势触发，取消后可停留本页）
+		goLogin() {
+			if (!requireMemberLogin({ tip: false, redirect: '/pages/order/index' })) return
+			this.isLoggedIn = true
+			this.refreshOrders()
+		},
 		startCountdown() {
 			if (this.countdownTimer) clearInterval(this.countdownTimer)
 			this.countdownTimer = setInterval(() => {
@@ -827,5 +834,31 @@ export default {
 .load-more,
 .no-more {
 	padding: 24rpx 0;
+}
+
+/* 未登录引导空态：不自动跳登录页，用户主动点击再进入 */
+.login-empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 28rpx;
+	padding: 120rpx 0;
+}
+
+.login-empty-text {
+	color: #666;
+	font-size: 28rpx;
+}
+
+.login-empty-btn {
+	min-width: 240rpx;
+	height: 76rpx;
+	line-height: 76rpx;
+	padding: 0 44rpx;
+	text-align: center;
+	color: #fff;
+	font-size: 28rpx;
+	background: #22c55e;
+	border-radius: 40rpx;
 }
 </style>

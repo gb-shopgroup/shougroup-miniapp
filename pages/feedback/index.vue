@@ -7,7 +7,7 @@
 
 		<!-- 我的建议反馈列表 -->
 		<scroll-view scroll-y class="feedback-scroll">
-			<view class="feedback-list" v-if="adviseList.length > 0">
+			<view class="feedback-list" v-if="isLoggedIn && adviseList.length > 0">
 				<view class="feedback-item" v-for="item in adviseList" :key="item.id">
 					<view class="item-head">
 						<text class="item-title">{{ item.title }}</text>
@@ -20,6 +20,11 @@
 					</view>
 				</view>
 				<view v-if="!hasMore && adviseList.length > 0" class="list-end">没有更多了</view>
+			</view>
+			<!-- 未登录：页内引导，不自动跳登录页（微信登录规范：取消登录后可停留本页） -->
+			<view v-else-if="!isLoggedIn" class="empty-wrap">
+				<text class="empty-text">登录后查看您的建议反馈</text>
+				<view class="empty-login-btn" @click="goLogin">去登录</view>
 			</view>
 			<view v-else-if="!loading" class="empty-wrap">
 				<text class="empty-text">暂无建议反馈</text>
@@ -98,23 +103,20 @@ export default {
 			// 新增建议反馈弹窗
 			addDialogVisible: false,
 			addForm: { title: '', content: '' },
-			submitting: false
+			submitting: false,
+			// 登录态：未登录展示页内引导空态，不再自动跳登录页
+			isLoggedIn: false
 		}
 	},
 	onLoad() {
-		// 反馈属于会员数据：未注册/未登录先引导登录，成功后回到本页
-		if (!requireMemberLogin({ tip: false, redirect: '/pages/feedback/index' })) return
-		this.refreshList()
+		// 微信登录规范：未登录允许停留在本页，用户主动点「去登录」才进入登录页
+		this.isLoggedIn = isMemberLoggedIn()
+		if (this.isLoggedIn) this.refreshList()
 	},
 	onShow() {
-		// 兜底：token 失效被请求层清掉后回到本页时重新引导
-		if (!isMemberLoggedIn()) {
-			if (!this._lastLoginGuideAt || Date.now() - this._lastLoginGuideAt > 1500) {
-				this._lastLoginGuideAt = Date.now()
-				requireMemberLogin({ tip: false, redirect: '/pages/feedback/index' })
-			}
-			return
-		}
+		// 兜底：token 失效被请求层清掉后回到本页时同步为未登录空态（不再弹回登录页）
+		this.isLoggedIn = isMemberLoggedIn()
+		if (!this.isLoggedIn) return
 		if (!this.loadedOnce) this.refreshList()
 	},
 	onReachBottom() {
@@ -123,6 +125,12 @@ export default {
 		this.loadData()
 	},
 	methods: {
+		// 用户主动点击「去登录」：登录必须由用户手势触发，取消后可停留本页
+		goLogin() {
+			if (!requireMemberLogin({ tip: false, redirect: '/pages/feedback/index' })) return
+			this.isLoggedIn = true
+			this.refreshList()
+		},
 		goBack() {
 			const pages = getCurrentPages()
 			if (pages.length > 1) {
@@ -355,6 +363,20 @@ export default {
 		font-size: 28rpx;
 		color: #999;
 	}
+}
+
+/* 未登录引导空态：不自动跳登录页，用户主动点击再进入 */
+.empty-wrap .empty-login-btn {
+	margin-top: 28rpx;
+	min-width: 240rpx;
+	height: 76rpx;
+	line-height: 76rpx;
+	padding: 0 44rpx;
+	text-align: center;
+	color: #fff;
+	font-size: 28rpx;
+	background: #22c55e;
+	border-radius: 40rpx;
 }
 
 .footer-bar {

@@ -95,6 +95,25 @@ export function findSkuBySelectedSpec(skus = [], selectedSpecValMap = {}, select
 	return skus.find(item => normalizeSkuNames(item.names) === selectedNames) || null
 }
 
+// 商品分享链接落地：解析需要定位的商品 ID（普通 query 与扫码 scene 都支持）
+export function resolveSharedGoodsId(options = {}) {
+	const params = Object.assign({}, options)
+	if (options.scene) {
+		let scene = ''
+		try {
+			scene = decodeURIComponent(options.scene)
+		} catch (err) {
+			scene = ''
+		}
+		scene.split('&').forEach(part => {
+			const index = part.indexOf('=')
+			if (index <= 0) return
+			params[part.slice(0, index)] = part.slice(index + 1)
+		})
+	}
+	return Number(params.goodsId || 0)
+}
+
 export function normalizeGroupGoods(item = {}) {
 	const isStock = item.isStock !== undefined ? item.isStock : (item.stock !== undefined ? item.stock : 0)
 	const balance = Number(item.num !== undefined ? item.num : (item.stockNum || item.balance || 0))

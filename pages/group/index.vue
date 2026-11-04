@@ -63,7 +63,12 @@
 			</view>
 		</view>
 		<view class="product-list">
-			<view class="product-card" :class="{ soldout: isProductSoldOut(item) }" v-for="(item, index) in displayGoods" :key="item.displayKey || item.id">
+			<view
+				class="product-card"
+				:id="item.id ? 'goods-' + item.id : ''"
+				:class="{ soldout: isProductSoldOut(item), 'product-card-focus': focusGoodsId > 0 && Number(item.id || 0) === focusGoodsId }"
+				v-for="(item, index) in displayGoods"
+				:key="item.displayKey || item.id">
 				<image class="product-image" :src="item.img" mode="aspectFill"></image>
 				<view class="product-info">
 					<view class="product-name">{{ item.name }}</view>
@@ -76,7 +81,12 @@
 					</view>
 				</view>
 				<view class="product-side">
-					<button class="share-button" open-type="share" :data-share-goods-id="item.id">
+					<!-- 点分享图标直接进微信「选择朋友」：原生转发，不弹中间层 -->
+					<button
+						class="share-button"
+						open-type="share"
+						:data-share-goods-id="item.id"
+						@click.stop="handleShareTap(item)">
 						<image class="share-icon" src="/static/image/detail_share.png" mode="aspectFit"></image>
 					</button>
 					<view class="sold-count" v-if="getSoldText(item)">{{ getSoldText(item) }}</view>
@@ -156,7 +166,7 @@ import AddCart from "./add.vue"
 import CartDialog from "./cartDialog.vue"
 import parseHtml from "@/utils/html-parser.js"
 import { hasGroupIntroContent, resolveActivityLeaderId } from "@/utils/groupPresentation.js"
-import { getCartQuantityForGoods, isGoodsSoldOut, normalizeGroupGoodsList, setCartGoodsQuantity, updateCartGoodsQuantity } from "@/utils/groupPurchase.js"
+import { getCartQuantityForGoods, isGoodsSoldOut, normalizeGroupGoodsList, resolveSharedGoodsId, setCartGoodsQuantity, updateCartGoodsQuantity } from "@/utils/groupPurchase.js"
 import { formatGroupDateTime, normalizeRichTextImages } from "@/utils/leaderGroup.js"
 import { getGroupLabelStyle, isMemberGroupOnline, normalizeMemberHomeRecord, resolveMemberHomeLogsData } from "@/utils/memberHome.js"
 import { cacheMemberBoundLeaderId, cacheMemberLoginInfo, pickMemberBoundLeaderId, requireMemberLogin } from "@/utils/auth.js"
@@ -167,6 +177,10 @@ import {
 	getMemberGroupActivityLogs2,
 	isBackMember,
 	swapMemberLeader } from "@/api/group.js"
+
+// 分享卡片兜底封面：商品图/团购图都取不到时也要有图，否则微信会回退成当前页面截图
+const SHARE_FALLBACK_COVER = 'https://shopgroup.obs.cn-north-9.myhuaweicloud.com/logo.png'
+
 export default {
 	data() {
 		return {
@@ -184,6 +198,9 @@ export default {
 			cartGoodsTotal: 0,
 			// 更新购物车某个商品购买数量
 			numFlag: 0,
+			// 商品分享链接落地需要定位高亮的商品 ID（商品列表回来后滚动定位）
+			focusGoodsId: 0,
+			focusGoodsTimer: null,
 				// 跟团记录
 				groupLogs: [],
 				pendingAddCartContext: null,
@@ -193,6 +210,9 @@ export default {
 	},
 	components: { AddCart, CartDialog },
 	onLoad(options) {
+		
+		// 商品分享卡片：记录被分享的商品，商品列表回来后滚动定位并高亮
+		this.focusGoodsId = resolveSharedGoodsId(options)
 		
 		// 页面跳转传递过来的
 		if(options.lid){
@@ -234,16 +254,16 @@ export default {
 		const goodsId = Number(dataset.shareGoodsId || dataset.goodsId || 0)
 		const product = this.products.find(item => Number(item.id || 0) === goodsId) || {}
 		const groupName = this.groupInfo.name || '团购活动'
-		const title = product.name ? `${product.name} - ${groupName}` : groupName
 		const params = [
 			`id=${encodeURIComponent(this.groupId || '')}`,
 			`lid=${encodeURIComponent(this.getActivityLeaderId() || '')}`
 		]
 		if (goodsId > 0) params.push(`goodsId=${encodeURIComponent(goodsId)}`)
+		// 商品分享卡片：标题取商品名，卡片图直接用该商品图（不做海报外框）
 		return {
-			title,
+			title: product.name || groupName,
 			path: `/pages/group/index?${params.join('&')}`,
-			imageUrl: product.img || this.groupInfo.img || this.shopBanner || ''
+			imageUrl: product.img || this.groupInfo.img || this.shopBanner || SHARE_FALLBACK_COVER
 		}
 	},
 	// 计算
@@ -476,9 +496,44 @@ export default {
 				const param = {lid:this.leaderId, groupId:this.groupId}
 				const res = await getGroupGoodsList(param)
 				this.products = normalizeGroupGoodsList(res.data)
+				this.scrollToSharedGoods()
 			} catch (err) {
 				console.log('初始化商品列表失败：', err)
 			}
+		},
+		// 商品分享卡片落地：滚动到被分享的商品并短暂高亮，避免用户在一长串商品里自己找
+		scrollToSharedGoods(){
+			if(this.focusGoodsId <= 0) return
+			if(!this.products.some(item => Number(item.id || 0) === this.focusGoodsId)) return
+			const goodsId = this.focusGoodsId
+			const scrollToGoods = () => {
+				uni.pageScrollTo({
+					selector: '#goods-' + goodsId,
+					duration: 300,
+					fail: () => {}
+				})
+			}
+			this.$nextTick(() => {
+				scrollToGoods()
+				// 商品列表/图片渲染稍慢时补一次定位，避免停在页面顶部
+				setTimeout(scrollToGoods, 500)
+			})
+			// 高亮保留 8 秒（页面刚打开时用户注意力在顶部，太短会看不到），滚动位置不回退
+			this.highlightGoods(goodsId, 8000)
+		},
+		// 商品高亮：落地定位和点分享图标都走这里，统一管理定时器，避免互相覆盖
+		highlightGoods(goodsId, duration = 2000){
+			const id = Number(goodsId || 0)
+			if (!(id > 0)) return
+			this.focusGoodsId = id
+			clearTimeout(this.focusGoodsTimer)
+			this.focusGoodsTimer = setTimeout(() => {
+				if (this.focusGoodsId === id) this.focusGoodsId = 0
+			}, duration)
+		},
+		// 点分享图标：直接进微信「选择朋友」原生转发，同时高亮该商品
+		handleShareTap(item){
+			this.highlightGoods(item && item.id, 2000)
 		},
 		// 获取商品库存
 		getGroupGoodsStockNum(product) {
@@ -1383,6 +1438,11 @@ export default {
 }
 .product-card.soldout {
 	opacity: 0.72;
+}
+/* 分享商品链接落地 / 点分享图标：高亮被分享的商品（自动恢复） */
+.product-card.product-card-focus {
+	background: #eafff1 !important;
+	box-shadow: 0 0 0 4rpx #22c55e, 0 8rpx 24rpx rgba(34, 197, 94, .22);
 }
 .product-image {
 	width: 154rpx;

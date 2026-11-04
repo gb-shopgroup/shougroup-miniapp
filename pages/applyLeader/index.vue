@@ -6,7 +6,7 @@
 		</view>
 
 		<!-- 顶部横幅 -->
-		<image class="banner" src="/static/image/applyleader/applybj.png" mode="widthFix"></image>
+		<image class="banner" src="/static/image/applyleader/applybj.jpg" mode="widthFix"></image>
 
 		<!-- 基础信息表单卡片 -->
 		<view class="form-card">

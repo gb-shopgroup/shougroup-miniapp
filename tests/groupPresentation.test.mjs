@@ -66,7 +66,20 @@ assert.match(groupDetailSource, /class="group-rich-section" v-if="hasGroupIntroC
 assert.match(groupDetailSource, /parseHtml\(normalizeRichTextImages\(this\.groupRichText\)\)/)
 assert.doesNotMatch(groupDetailSource, /class="group-rich-section" :class="\{ plain: !hasGroupRichText \}" v-if="hasGroupIntroContent"/)
 assert.match(groupDetailSource, /class="cart-stepper"/)
-assert.match(groupDetailSource, /class="share-button" open-type="share" :data-share-goods-id="item.id"/)
+// 商品分享：点图标直接进微信「选择朋友」（原生转发，不用中间面板）
+assert.match(groupDetailSource, /class="share-button"[\s\S]*?open-type="share"[\s\S]*?:data-share-goods-id="item\.id"[\s\S]*?@click\.stop="handleShareTap\(item\)"/)
+assert.match(groupDetailSource, /handleShareTap\(item\)\{[\s\S]*?this\.highlightGoods\(item && item\.id, 2000\)/)
+assert.doesNotMatch(groupDetailSource, /openGoodsShareSheet/)
+// 卡片：标题取商品名，卡片图直接用商品图；取不到时用 logo，避免微信回退成页面截图
+assert.match(groupDetailSource, /title: product\.name \|\| groupName/)
+assert.match(groupDetailSource, /imageUrl: product\.img \|\| this\.groupInfo\.img \|\| this\.shopBanner \|\| SHARE_FALLBACK_COVER/)
+// C 端不再用隐藏画布画海报封面，相关画布与绘制逻辑应清干净
+assert.doesNotMatch(groupDetailSource, /goodsShareCanvas/)
+assert.doesNotMatch(groupDetailSource, /renderShareCard/)
+assert.doesNotMatch(groupDetailSource, /preloadGoodsShareCovers/)
+// 落地高亮：保留 8 秒 + 渲染慢时补一次滚动定位
+assert.match(groupDetailSource, /this\.highlightGoods\(goodsId, 8000\)/)
+assert.match(groupDetailSource, /setTimeout\(scrollToGoods, 500\)/)
 assert.match(groupDetailSource, /onShareAppMessage\(res\)/)
 assert.match(groupDetailSource, /dataset\.shareGoodsId/)
 assert.match(groupDetailSource, /path: `\/pages\/group\/index\?\$\{params\.join\('&'\)\}`/)
@@ -85,5 +98,11 @@ assert.match(groupDetailSource, /margin-bottom: calc\(144rpx \+ env\(safe-area-i
 assert.match(groupDetailSource, /padding: 8rpx 0 72rpx/)
 assert.match(groupDetailSource, /padding: 20rpx 30rpx 0 30rpx !important/)
 assert.match(groupDetailSource, /margin: 8rpx 0 0 0 !important/)
+// 商品分享卡片落地：goodsId 解析 → 滚动到被分享商品并短暂高亮
+assert.match(groupDetailSource, /this\.focusGoodsId = resolveSharedGoodsId\(options\)/)
+assert.match(groupDetailSource, /:id="item\.id \? 'goods-' \+ item\.id : ''"/)
+assert.match(groupDetailSource, /'product-card-focus': focusGoodsId > 0 && Number\(item\.id \|\| 0\) === focusGoodsId/)
+assert.match(groupDetailSource, /uni\.pageScrollTo\(\{[\s\S]*?selector: '#goods-' \+ goodsId/)
+assert.match(groupDetailSource, /\.product-card\.product-card-focus \{/)
 
 console.log('groupPresentation tests passed')
