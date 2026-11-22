@@ -65,6 +65,8 @@ assert.deepEqual(normalizeLeaderGoods(rawGoods), {
 	price2: 18,
 	isStock: 1,
 	stockNum: 88,
+	// 虚拟订单数：商品维度字段，随新增/编辑提交
+	virtual: 0,
 	isLimit: 1,
 	limitNum: 2,
 	unit: '斤',
@@ -178,6 +180,8 @@ assert.deepEqual(buildGoodsSubmitPayload({
 	price2: 0,
 	isStock: 0,
 	stockNum: 0,
+	// 未填写时提交默认 0
+	virtual: 0,
 	isLimit: 0,
 	limitNum: 0,
 	unit: '斤',
@@ -217,6 +221,7 @@ assert.deepEqual(buildGoodsSubmitPayload({
 	marketPrice: 18,
 	isStock: 1,
 	stockNum: 88,
+	virtual: 0,
 	isLimit: 1,
 	limitNum: 2,
 	unit: '斤',
@@ -231,6 +236,11 @@ assert.deepEqual(buildGoodsSubmitPayload({
 		specValLists: [{ valId: 0, sid: 0, val: '500g' }]
 	}]
 })
+
+// 虚拟订单数随商品提交（字段 virtual），负数/小数/非数字清洗为非负整数
+assert.equal(buildGoodsSubmitPayload({ name: 'x', virtual: '7' }).virtual, 7)
+assert.equal(buildGoodsSubmitPayload({ name: 'x', virtual: -3.9 }).virtual, 0)
+assert.equal(buildGoodsSubmitPayload({ name: 'x' }).virtual, 0)
 
 const specs = normalizeLeaderSpecList([
 	{ specId: 11, specName: '重量', valList: [{ valId: 21, valName: '500g' }] }

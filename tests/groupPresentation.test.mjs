@@ -73,13 +73,18 @@ assert.doesNotMatch(groupDetailSource, /openGoodsShareSheet/)
 // 卡片：标题取商品名，卡片图直接用商品图；取不到时用 logo，避免微信回退成页面截图
 assert.match(groupDetailSource, /title: product\.name \|\| groupName/)
 assert.match(groupDetailSource, /imageUrl: product\.img \|\| this\.groupInfo\.img \|\| this\.shopBanner \|\| SHARE_FALLBACK_COVER/)
+// 点卡片落地必须带商品 id：path 里 push goodsId，落地页据此滚动定位
+assert.match(groupDetailSource, /if \(goodsId > 0\) params\.push\(`goodsId=\$\{encodeURIComponent\(goodsId\)\}`\)/)
 // C 端不再用隐藏画布画海报封面，相关画布与绘制逻辑应清干净
 assert.doesNotMatch(groupDetailSource, /goodsShareCanvas/)
 assert.doesNotMatch(groupDetailSource, /renderShareCard/)
 assert.doesNotMatch(groupDetailSource, /preloadGoodsShareCovers/)
-// 落地高亮：保留 8 秒 + 渲染慢时补一次滚动定位
+// 落地高亮：保留 8 秒 + 渲染慢时补两次滚动定位
 assert.match(groupDetailSource, /this\.highlightGoods\(goodsId, 8000\)/)
 assert.match(groupDetailSource, /setTimeout\(scrollToGoods, 500\)/)
+assert.match(groupDetailSource, /setTimeout\(scrollToGoods, 1500\)/)
+// 定位要兼容低版本基础库：用节点查询算滚动位置，而不是只依赖 selector（2.23.0+ 才支持）
+assert.match(groupDetailSource, /select\('#goods-' \+ goodsId\)\.boundingClientRect\(\)/)
 assert.match(groupDetailSource, /onShareAppMessage\(res\)/)
 assert.match(groupDetailSource, /dataset\.shareGoodsId/)
 assert.match(groupDetailSource, /path: `\/pages\/group\/index\?\$\{params\.join\('&'\)\}`/)

@@ -93,7 +93,11 @@ export function getGroupGoodsList(params) {
 }
 
 function withLogId(params = {}) {
-	return { id: Number(params.id || params.groupId || 0) }
+	const data = { id: Number(params.id || params.groupId || 0) }
+	// 商品分享落地会带 goodsId：把商品 id 传给后端，按商品过滤跟团记录
+	const goodsId = Number(params.goodsId || 0)
+	if (goodsId > 0) data.goodsId = goodsId
+	return data
 }
 
 // 团购详情跟团滚动记录

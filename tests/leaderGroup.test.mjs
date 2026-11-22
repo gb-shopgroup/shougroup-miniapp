@@ -158,6 +158,7 @@ assert.deepEqual(getLeaderGroupManageActions({ isClose: 0, statusInfo: { value: 
 assert.deepEqual(getLeaderGroupManageActions({ isClose: 1, statusInfo: { value: 1 } }).map(item => item.key), ['edit', 'open', 'copy'])
 assert.deepEqual(getLeaderGroupManageActions({ isClose: 1, statusInfo: { value: 3 } }).map(item => item.key), ['edit', 'copy'])
 
+// 虚拟订单数移到商品维度：团购活动新增/编辑的提交参数不再带 virtual
 assert.deepEqual(buildLeaderGroupSubmitPayload({
 	id: 9,
 	cat: 2,
@@ -166,7 +167,6 @@ assert.deepEqual(buildLeaderGroupSubmitPayload({
 	info: '本周到货',
 	tagId: 3,
 	pointId: 5,
-	virtual: '8',
 	startTime: start,
 	endTime: end,
 	goods: [
@@ -181,7 +181,6 @@ assert.deepEqual(buildLeaderGroupSubmitPayload({
 	info: '本周到货',
 	tagId: 3,
 	pointId: 5,
-	virtual: 8,
 	startTime: start,
 	endTime: end,
 	goods: [
@@ -212,6 +211,8 @@ const editRoundTrip = buildLeaderGroupSubmitPayload(normalizeLeaderGroup({
 assert.equal(editRoundTrip.id, 12)
 assert.equal(editRoundTrip.name, '鲜甜爽口玉米0858')
 assert.equal(editRoundTrip.cat, 3)
+// 活动层不再提交 virtual（虚拟订单数改到商品维度）
+assert.equal(editRoundTrip.virtual, undefined)
 assert.equal(editRoundTrip.info, '<p>本周到货</p>')
 assert.equal(editRoundTrip.tagId, 3)
 assert.equal(Object.prototype.hasOwnProperty.call(editRoundTrip, 'label'), false)
@@ -305,7 +306,7 @@ assert.deepEqual(buildLeaderGroupCopyDraft(normalized), {
 	label: '自提',
 	pointId: 5,
 	pointName: '门店自提点',
-	virtual: 8,
+	// 复制团购草稿同样不带 virtual（虚拟订单数在商品维度维护）
 	startTime: '',
 	endTime: '',
 	goods: normalized.goods
@@ -361,7 +362,7 @@ assert.match(addPage, /row-readonly/)
 assert.match(addPage, /<picker v-if="isAdd" :range="categoryList"/)
 // 编辑态只读守卫：标签、时间等弹层（自提点弹层已随功能移除）
 assert.equal((addPage.match(/if ?\(!this\.isAdd\)/g) || []).length, 2)
-assert.match(addPage, /编辑态：团购名称\/分类\/开始时间不可改，其余（介绍、物流、结束时间、标签、跟团数、商品上下架与增删）均可修改。/)
+assert.match(addPage, /编辑态：团购名称\/分类\/开始时间不可改，其余（介绍、物流、结束时间、标签、商品上下架与增删）均可修改。/)
 // 编辑态标题与按钮文案区分开团/保存
 assert.match(addPage, /\{\{ isAdd \? '开团' : '修改团购' \}\}/)
 assert.match(addPage, /<button @click="submitForm">\{\{ isAdd \? '开团' : '保存' \}\}<\/button>/)
@@ -380,13 +381,11 @@ assert.match(addPage, /maxDateText/)
 assert.match(addPage, /copyId/)
 assert.match(addPage, /syncSelectedGoodsStock/)
 assert.match(addPage, /buildGroupGoodsReference/)
-// 开团和编辑团购均可填写虚拟跟团数，提交字段为 virtual。
-assert.match(addPage, /<text>跟团数<\/text>/)
-assert.match(addPage, /class="virtual-input"/)
-assert.match(addPage, /v-model="formData\.virtual"/)
-assert.match(addPage, /@blur="normalizeVirtualCount"/)
-assert.match(addPage, /this\.normalizeVirtualCount\(\)/)
-assert.match(addPage, /Math\.floor\(Number\(this\.formData\.virtual\)\)/)
+// 虚拟订单数已移到商品维度：开团/编辑团购页不再有「跟团数」输入，也不提交 virtual
+assert.doesNotMatch(addPage, /<text>跟团数<\/text>/)
+assert.doesNotMatch(addPage, /virtual-input/)
+assert.doesNotMatch(addPage, /v-model="formData\.virtual"/)
+assert.doesNotMatch(addPage, /normalizeVirtualCount/)
 assert.doesNotMatch(addPage, /mode="multiSelector"/)
 assert.match(addPage, /<editor/)
 assert.match(addPage, /groupIntroEditor/)

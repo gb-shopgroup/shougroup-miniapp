@@ -7,7 +7,7 @@
 		</view>
 
 		<view class="product-library">
-			<view class="product-row" v-for="item in productList" :key="item.id">
+			<view class="product-row" :class="{ 'product-row-closed': isGoodsClosed(item) }" v-for="item in productList" :key="item.id">
 				<view class="image-wrap">
 					<image v-if="item.img" :src="item.img" mode="aspectFill"></image>
 					<view v-else class="image-placeholder">商品图</view>
@@ -247,6 +247,21 @@ export default {
 	margin-bottom: 34rpx;
 }
 
+/* 已下线的商品整行灰底，和正常商品明显区分 */
+.product-row-closed {
+	background: #f2f2f2;
+	padding: 12rpx;
+	margin: -12rpx -12rpx 22rpx;
+	border-radius: 8rpx;
+}
+
+/* 已下线商品的图片一起置灰 */
+.product-row-closed .image-wrap image,
+.product-row-closed .image-placeholder {
+	filter: grayscale(100%);
+	opacity: 0.65;
+}
+
 .product-row:last-child {
 	margin-bottom: 0;
 }
@@ -300,15 +315,15 @@ export default {
 	gap: 12rpx;
 }
 
-/* 已下线标识：与团购列表的 muted 状态胶囊同一套配色 */
+/* 已下线标识：字号大一号，浅红色文字 */
 .product-status {
 	flex-shrink: 0;
 	padding: 4rpx 14rpx;
 	border-radius: 20rpx;
-	color: #999;
-	background: #f4f4f4;
-	font-size: 22rpx;
-	line-height: 30rpx;
+	color: #ff8a8a;
+	background: #fff;
+	font-size: 26rpx;
+	line-height: 34rpx;
 }
 
 .product-name {

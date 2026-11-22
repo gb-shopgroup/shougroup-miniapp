@@ -61,6 +61,8 @@ export function normalizeLeaderGoods(row = {}) {
 		price2: toPriceNumber(goods.price2 !== undefined ? goods.price2 : (goods.marketPrice || 0)),
 		isStock: Number(goods.isStock || 0),
 		stockNum: Number(goods.stockNum !== undefined ? goods.stockNum : (goods.num || 0)),
+		// 虚拟订单数：商品维度字段，编辑时回显
+		virtual: Number(goods.virtual || 0),
 		isLimit: Number(goods.isLimit || 0),
 		limitNum: Number(goods.limitNum !== undefined ? goods.limitNum : (goods.num2 || 0)),
 		unit: goods.unit || '',
@@ -186,6 +188,8 @@ export function buildGoodsSubmitPayload(form = {}, options = {}) {
 		goodsInfo: form.goodsInfo || '',
 		isStock: Number(form.isStock || 0),
 		stockNum: Number(form.isStock || 0) === 1 ? Number(form.stockNum || 0) : 0,
+		// 虚拟订单数随商品提交（新增/编辑都传），后端字段名 virtual
+		virtual: Math.max(Math.floor(Number(form.virtual || 0)) || 0, 0),
 		isLimit: Number(form.isLimit || 0),
 		limitNum: Number(form.isLimit || 0) === 1 ? Number(form.limitNum || 0) : 0,
 		unit: form.unit || '',

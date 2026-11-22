@@ -171,7 +171,8 @@ import {
 	shareLeaderGroupGoodsPoster,
 	updateLeaderSkuStock
 } from '@/api/leader.js'
-import { getLeaderGroupCoverImages, getLeaderGroupManageActions, normalizeLeaderGroup, normalizeRichTextImages } from '@/utils/leaderGroup.js'
+import { getGroupGoodsList } from '@/api/group.js'
+import { getLeaderGroupManageActions, normalizeLeaderGroup, normalizeRichTextImages } from '@/utils/leaderGroup.js'
 import { normalizeLeaderSkuDraftList } from '@/utils/leaderProduct.js'
 import { formatShareSales, renderShareCard, SHARE_CARD_HEIGHT, SHARE_CARD_WIDTH } from '@/utils/shareCard.js'
 
@@ -191,6 +192,10 @@ export default {
 			activeGoodsShare: null,
 			// 商品分享卡片封面（canvas 临时文件），键为 goodsId，避免转发到别的商品
 			goodsShareCovers: {},
+			// 商品在本活动中的已团数（真实单数 + 虚拟单数），来自 /goods/group/goods/list 的 groupNum
+			goodsSoldCountMap: {},
+			// 整团分享封面：把选中的活动图完整放进 5:4 画布后导出的临时图片
+			groupShareCover: '',
 			// 正在生成封面的商品（同一件商品不重复画）
 			goodsSharePreparing: 0,
 			// 当前面板这件商品的封面是否已就绪：未就绪先禁用「分享给微信」，
@@ -259,7 +264,7 @@ export default {
 			if (activityLeaderId > 0) params.push(`lid=${encodeURIComponent(activityLeaderId)}`)
 			return {
 				title: this.group.name,
-				imageUrl: this.shareCover(),
+				imageUrl: this.groupShareCover || this.shareCover(),
 				path: `/pages/group/index?${params.join('&')}`
 			}
 		},
@@ -270,7 +275,7 @@ export default {
 			return {
 				title: this.group.name || this.leaderDisplayName,
 				query: query.join('&'),
-				imageUrl: this.shareCover()
+				imageUrl: this.groupShareCover || this.shareCover()
 			}
 		},
 		manageActions(){
@@ -320,10 +325,29 @@ export default {
 			try {
 				const res = await getLeaderGroupInfo({ groupId: this.groupId })
 				this.group = normalizeLeaderGroup(res.data || {})
-				// 商品都到齐了再后台画分享封面，点分享时不用等
+				// 先生成整团分享封面（活动图全图展示），再取商品级已团数并画商品封面
+				this.groupShareCover = ''
+				await this.prepareGroupShareCover()
+				await this.loadGoodsSoldCounts()
 				this.preloadGoodsShareCovers()
 			} catch (err) {
 				console.log('初始化团详情失败：', err)
+			}
+		},
+		// 商品分享卡片的「已售N单」= 该商品虚拟单数 + 该商品在本次团购活动中的真实单数。
+		// 团长端活动详情不下发商品级销量，改用 C 端商品列表接口返回的 groupNum。
+		async loadGoodsSoldCounts(){
+			try {
+				const res = await getGroupGoodsList({ groupId: this.groupId, lid: this.group.lid || 0 })
+				const list = Array.isArray(res.data) ? res.data : []
+				const map = {}
+				list.forEach(item => {
+					const id = Number(item.id || item.gid || item.goodsId || 0)
+					if (id > 0) map[id] = Number(item.groupNum || 0)
+				})
+				this.goodsSoldCountMap = map
+			} catch (err) {
+				console.log('查询商品已团数失败：', err)
 			}
 		},
 		goBack(){
@@ -473,6 +497,20 @@ export default {
 				list.reduce((chain, item) => chain.then(() => this.prepareGoodsShareCover(item)), Promise.resolve())
 			}, 400)
 		},
+		// 分享卡片「已售N单」= 该商品虚拟单数 + 该商品在本次团购活动中的真实单数。
+		// 优先用商品列表接口的 groupNum（已包含上述两部分），接口不可用时再回退活动级口径。
+		resolveGoodsSoldCount(goods){
+			const goodsId = Number((goods && (goods.gid || goods.id)) || 0)
+			const mapped = this.goodsSoldCountMap && this.goodsSoldCountMap[goodsId]
+			if (mapped !== undefined && mapped !== null) return Number(mapped)
+			const goodsOrder = Number((goods && goods.order) || 0)
+			const goodsVirtual = Number((goods && goods.virtual) || 0)
+			if (goodsOrder + goodsVirtual > 0) return goodsOrder + goodsVirtual
+			const groupOrder = Number(this.group.order || 0)
+			const groupVirtual = Number(this.group.virtual || 0)
+			if (groupOrder + groupVirtual > 0) return groupOrder + groupVirtual
+			return Number(this.group.joinTimes || 0)
+		},
 		// 打开分享面板时预生成封面：转发卡片只能放一张 5:4 图片，
 		// 价格/已售必须画进图里，所以要在用户点「分享给微信」前准备好
 		async prepareGoodsShareCover(goods){
@@ -490,7 +528,7 @@ export default {
 					pixelRatio: this.getSharePixelRatio(),
 					name: goods.gname || this.group.name || '',
 					price: goods.price,
-					soldText: formatShareSales(this.group.joinTimes),
+					soldText: formatShareSales(this.resolveGoodsSoldCount(goods)),
 					imagePath: imageInfo ? imageInfo.path : '',
 					imageWidth: imageInfo ? imageInfo.width : 0,
 					imageHeight: imageInfo ? imageInfo.height : 0
@@ -562,16 +600,62 @@ export default {
 				}, this)
 			})
 		},
-		// 分享卡片封面：商品图优先，其次团购图/活动图，最后官方 logo。
-		// 封面为空时微信会回退成“当前页面截图”，所以必须保底一张图。
+		// 分享卡片封面：单个商品分享时优先传入的商品图；整团分享优先活动内容里的第一张图，
+		// 其次活动 img/img2/img3，活动没有图片才取第一个商品的第一张图，最后官方 logo 保底。
 		shareCover(img = ''){
+			const info = this.group.info
+			const contentMatch = typeof info === 'string'
+				? info.match(/<img\b[^>]*?\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/i)
+				: null
+			const contentImage = contentMatch ? (contentMatch[1] || contentMatch[2] || contentMatch[3]) : ''
+			const firstGoods = Array.isArray(this.group.goods) ? this.group.goods[0] : null
 			const candidates = [
 				img,
+				contentImage,
 				this.group.img,
-				...getLeaderGroupCoverImages(this.group)
+				this.group.img2,
+				this.group.img3,
+				firstGoods && firstGoods.img ? firstGoods.img : ''
 			]
 			const cover = candidates.find(item => typeof item === 'string' && item.trim())
 			return cover || SHARE_FALLBACK_COVER
+		},
+		// 把选中的活动图完整放进 5:4 画布（contain，不裁剪，按原图宽高留白），
+		// 避免竖图直接交给微信分享卡片时被裁掉上下。
+		async prepareGroupShareCover(){
+			const src = this.shareCover()
+			if (!src) return
+			try {
+				const imageInfo = await this.getShareImageInfo(src)
+				if (!imageInfo || !(imageInfo.width > 0) || !(imageInfo.height > 0)) return
+				const canvas = await this.getShareCanvasNode()
+				if (!canvas || typeof canvas.getContext !== 'function') return
+				const pixelRatio = this.getSharePixelRatio()
+				const width = SHARE_CARD_WIDTH * pixelRatio
+				const height = SHARE_CARD_HEIGHT * pixelRatio
+				canvas.width = width
+				canvas.height = height
+				const ctx = canvas.getContext('2d')
+				if (!ctx) return
+				if (typeof ctx.setTransform === 'function') ctx.setTransform(1, 0, 0, 1, 0, 0)
+				ctx.fillStyle = '#ffffff'
+				ctx.fillRect(0, 0, width, height)
+				const image = typeof canvas.createImage === 'function' ? canvas.createImage() : null
+				if (!image) return
+				await new Promise((resolve, reject) => {
+					image.onload = resolve
+					image.onerror = reject
+					image.src = imageInfo.path || src
+				})
+				const scale = Math.min(width / imageInfo.width, height / imageInfo.height)
+				const drawWidth = imageInfo.width * scale
+				const drawHeight = imageInfo.height * scale
+				ctx.drawImage(image, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight)
+				const path = await this.exportShareCard(canvas)
+				if (path) this.groupShareCover = path
+			} catch (err) {
+				console.log('生成整团分享封面失败：', err)
+			}
 		},
 		async shareToMomentsPoster(){
 			if(!this.group.id) return

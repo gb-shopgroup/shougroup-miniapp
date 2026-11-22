@@ -100,6 +100,8 @@ assert.deepEqual(normalizeGroupGoods({
 	id: 7,
 	name: '苹果',
 	img: '/a.png',
+	// 已团数：接口字段 groupNum（真实订单数 + 商品虚拟订单数），未下发时为 0
+	groupNum: 0,
 	price: 9.9,
 	price2: 0,
 	type: 0,
@@ -128,6 +130,7 @@ assert.deepEqual(normalizeGroupGoods({
 	id: 12,
 	name: '香蕉',
 	img: '/banana.png',
+	groupNum: 0,
 	price: 11.5,
 	price2: 0,
 	type: 2,
@@ -139,6 +142,13 @@ assert.deepEqual(normalizeGroupGoods({
 	specs: [{ specId: 21, specName: '重量', valList: [{ valId: 31, valName: '500g' }] }],
 	skus: [{ id: 41, ids: '31', names: '500g', price: 10, price2: 0, stock: 3, num: 3, img: '', isClose: 0 }]
 })
+
+// 已团数：优先取接口新字段 groupNum（真实订单 + 虚拟订单），兼容旧字段 orderNum/soldNum
+assert.equal(normalizeGroupGoods({ id: 20, name: '花生', groupNum: 22 }).groupNum, 22)
+assert.equal(normalizeGroupGoods({ id: 21, name: '瓜子', groupNum: 0, orderNum: 12 }).groupNum, 0)
+assert.equal(normalizeGroupGoods({ id: 22, name: '花生', orderNum: 12 }).groupNum, 12)
+assert.equal(normalizeGroupGoods({ id: 23, name: '瓜子', soldNum: 5 }).groupNum, 5)
+assert.equal(normalizeGroupGoods({ id: 24, name: '大米' }).groupNum, 0)
 
 assert.deepEqual(normalizeGroupGoodsList([
 	{ gid: 12, gname: '香蕉', img: '/banana.png' },

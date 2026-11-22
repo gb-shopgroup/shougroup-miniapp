@@ -40,10 +40,10 @@
 		<text v-if="groupCreateTimeText">{{ groupCreateTimeText }} 发布</text>
 		<text class="end-time" v-if="groupEndTimeText">{{ groupEndTimeText }} 结束</text>
 	</view>
-		<view class="group-stat-line" v-if="hasGroupIntroContent && (groupInfo.viewCount || groupInfo.num)">
-			<text>{{ groupInfo.viewCount || 0 }}人查看</text>
-			<text>{{ groupInfo.num || 0 }}次跟团</text>
-		</view>
+<!--		<view class="group-stat-line" v-if="hasGroupIntroContent && (groupInfo.viewCount || groupInfo.num)">-->
+<!--			<text>{{ groupInfo.viewCount || 0 }}人查看</text>-->
+<!--			<text>{{ groupInfo.num || 0 }}次跟团</text>-->
+<!--		</view>-->
 	<view class="group-rich-section" v-if="hasGroupIntroContent">
 		<view class="rich-content">
 			<rich-text :nodes="groupRichTextNodes"></rich-text>
@@ -79,6 +79,8 @@
 						<text class="price-symbol">¥</text>
 						<text class="price-value">{{ item.price }}</text>
 					</view>
+					<!-- 已团N：数据取商品接口的 groupNum 字段，展示在价格下方 -->
+					<text class="sold-count" v-if="getSoldText(item)">{{ getSoldText(item) }}</text>
 				</view>
 				<view class="product-side">
 					<!-- 点分享图标直接进微信「选择朋友」：原生转发，不弹中间层 -->
@@ -89,7 +91,6 @@
 						@click.stop="handleShareTap(item)">
 						<image class="share-icon" src="/static/image/detail_share.png" mode="aspectFit"></image>
 					</button>
-					<view class="sold-count" v-if="getSoldText(item)">{{ getSoldText(item) }}</view>
 					<view class="btn-add-cart disabled" v-if="isProductSoldOut(item)">库存不足</view>
 					<view class="cart-stepper" v-else-if="isBlackMember==false && !hasSelectableSpec(item) && getSelectedGoodsCount(item) > 0">
 						<view class="cart-stepper-btn minus" @click.stop="decreaseSelectedGoods(item)">－</view>
@@ -352,9 +353,9 @@ export default {
 			return []
 		},
 		getSoldText(item){
-			
-			const sold = item.soldNum || item.joinNum || 0
-			return sold ? `已团${sold}` : ''
+			// 已团数取商品接口字段 groupNum（真实订单数 + 商品虚拟订单数），兼容旧字段兜底
+			const sold = Number(item.groupNum || item.orderNum || item.joinNum || 0)
+			return sold > 0 ? `已团${sold}` : ''
 		},
 		isProductSoldOut(item){
 			return isGoodsSoldOut(item)
@@ -506,17 +507,29 @@ export default {
 			if(this.focusGoodsId <= 0) return
 			if(!this.products.some(item => Number(item.id || 0) === this.focusGoodsId)) return
 			const goodsId = this.focusGoodsId
+			// pageScrollTo 的 selector 写法要基础库 2.23.0+，低版本会静默失败；
+			// 用节点查询自己算滚动位置，所有版本都能定位到被分享的商品
 			const scrollToGoods = () => {
-				uni.pageScrollTo({
-					selector: '#goods-' + goodsId,
-					duration: 300,
-					fail: () => {}
-				})
+				if (typeof uni.createSelectorQuery !== 'function') {
+					uni.pageScrollTo({ selector: '#goods-' + goodsId, duration: 300, fail: () => {} })
+					return
+				}
+				uni.createSelectorQuery()
+					.select('#goods-' + goodsId).boundingClientRect()
+					.selectViewport().scrollOffset()
+					.exec(res => {
+						const rect = res && res[0]
+						const viewport = res && res[1]
+						if (!rect) return
+						const scrollTop = (viewport ? viewport.scrollTop : 0) + rect.top - 90
+						uni.pageScrollTo({ scrollTop: Math.max(scrollTop, 0), duration: 300, fail: () => {} })
+					})
 			}
 			this.$nextTick(() => {
 				scrollToGoods()
-				// 商品列表/图片渲染稍慢时补一次定位，避免停在页面顶部
+				// 商品列表/图片渲染稍慢时补两次定位，避免停在页面顶部
 				setTimeout(scrollToGoods, 500)
+				setTimeout(scrollToGoods, 1500)
 			})
 			// 高亮保留 8 秒（页面刚打开时用户注意力在顶部，太短会看不到），滚动位置不回退
 			this.highlightGoods(goodsId, 8000)
@@ -683,7 +696,8 @@ export default {
 				try {
 					const hasCachedLogs = this.applyCachedGroupLogs()
 					if(!hasCachedLogs){
-						const param = { id:this.groupId }
+						// 商品分享落地时 focusGoodsId > 0：接口按该商品过滤跟团记录；普通进入不带 goodsId
+					const param = { id:this.groupId, goodsId:this.focusGoodsId }
 						const res = await getMemberGroupActivityLogs2(param)
 						const logs = this.normalizeGroupLogs(resolveMemberHomeLogsData(res.data))
 						this.applyGroupLogs(logs)
@@ -1496,10 +1510,13 @@ export default {
 .share-button::after {
 	border: none;
 }
+/* 已团N：橙色小字，贴信息列底部，与右侧「加入购物车」按钮垂直居中对齐 */
 .sold-count {
-	margin-top: 18rpx;
+	margin-top: auto;
+	margin-bottom: 2rpx;
 	color: #ff7a45;
-	font-size: 20rpx;
+	font-size: 24rpx;
+	line-height: 1.3;
 }
 .product-side .btn-add-cart {
 	margin-top: auto;

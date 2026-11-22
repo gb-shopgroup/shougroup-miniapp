@@ -12,7 +12,8 @@ export function buildMemberHomeListPayload({ leaderId = 0, longitude, latitude, 
 		payload.longitude = Number(longitude)
 		payload.latitude = Number(latitude)
 	}
-	if (String(keyword || '').trim()) payload.groupName = String(keyword).trim()
+	// 文档 2026-11-21：goodsName 为商品名模糊搜索（后端查出活动后按商品名在结果中过滤），不再按团购名搜索。
+	if (String(keyword || '').trim()) payload.goodsName = String(keyword).trim()
 	// catId 只发正数：后端分类来自 gb_group_category_info.cat_id（int UNSIGNED 自增），
 	// 从接口 GET /order/group/groupActivity/cat 下发，不存在 0/负数分类。
 	// （历史上前端在没有分类时用过 -1…-5 的假 id，那套 id 后端永远匹配不到，已移除。）

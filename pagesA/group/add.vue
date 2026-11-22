@@ -121,17 +121,7 @@
 					<text class="setting-arrow" >›</text>
 				</view>
 			</view>
-			<!-- 虚拟跟团数直接随 virtual 字段提交，由后端负责存储及统计口径。 -->
-			<view class="setting-row">
-				<text>跟团数</text>
-				<input
-					class="virtual-input"
-					type="number"
-					v-model="formData.virtual"
-					placeholder="默认为0"
-					@blur="normalizeVirtualCount" />
 			</view>
-		</view>
 	</scroll-view>
 	
 	<view class="bottom-action">
@@ -222,7 +212,6 @@ export default {
 				tagId: 0,
 				tagName: '',
 				label: '',
-				virtual: 0,
 				// 活动开始/结束时间，统一秒级时间戳
 				startTime: '',
 				endTime: '',
@@ -662,10 +651,7 @@ export default {
 		},
 		// 提交保存团购
 		submitForm() {
-			// 新增和编辑都统一提交非负整数 virtual，不在前端累计该数值。
-			this.normalizeVirtualCount()
-			
-			// 编辑态：团购名称/分类/开始时间不可改，其余（介绍、物流、结束时间、标签、跟团数、商品上下架与增删）均可修改。
+			// 编辑态：团购名称/分类/开始时间不可改，其余（介绍、物流、结束时间、标签、商品上下架与增删）均可修改。
 			// 商品上下架走独立接口即时生效，不随保存提交。
 			if (!this.isAdd) {
 				if (this.formData.goods.length == 0) {
@@ -723,13 +709,8 @@ export default {
 		},
 		// 组装团购提交数据；商品只作为商品库引用
 		buildSubmitData(){
-			
+
 			return buildLeaderGroupSubmitPayload(this.formData)
-		},
-		// 防止空值、小数或负数透传给接口；有效值由后端按 virtual 字段处理。
-		normalizeVirtualCount(){
-			const count = Math.floor(Number(this.formData.virtual))
-			this.formData.virtual = Number.isFinite(count) && count > 0 ? count : 0
 		},
 		// 编辑器准备就绪
 		onEditorReady() {
@@ -1313,14 +1294,6 @@ export default {
 }
 
 /* 团长填写的虚拟跟团数：与其他设置值保持右对齐，并使用数字键盘。 */
-.virtual-input {
-	width: 240rpx;
-	min-height: 64rpx;
-	font-size: 28rpx;
-	color: #666;
-	text-align: right;
-}
-
 .setting-arrow {
 	color: #8c8c8c;
 	font-size: 52rpx;

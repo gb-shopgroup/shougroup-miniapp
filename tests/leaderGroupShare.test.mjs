@@ -111,14 +111,22 @@ const noCoverCard = page.buildGoodsShareCard({ goodsId: 205, name: '最新测试
 assert.equal(noCoverCard.title, '最新测试商品1', '没有封面时标题也不拼价格/已售')
 assert.equal(noCoverCard.imageUrl, 'https://example.com/potato.png')
 
-// ===== 分享卡片封面：商品图优先，其次团购/活动图，最后 logo 保底（避免微信回退成页面截图）=====
+// ===== 分享卡片封面：传入商品图优先；整团分享活动图（含活动内容图）优先，活动无图取第一个商品图 =====
 assert.equal(page.shareCover('https://example.com/goods.png'), 'https://example.com/goods.png')
 page.group = { id: 7, lid: 8, name: '团购', img: 'https://example.com/group.png' }
 assert.equal(page.shareCover(''), 'https://example.com/group.png')
-page.group = { id: 7, lid: 8, name: '团购', img: '', goods: [{ img: 'https://example.com/activity.png' }] }
-assert.equal(page.shareCover(''), 'https://example.com/activity.png')
+page.group = { id: 7, lid: 8, name: '团购', img: '', img2: 'https://example.com/activity-2.png', goods: [{ img: 'https://example.com/goods.png' }] }
+assert.equal(page.shareCover(''), 'https://example.com/activity-2.png', '活动 img2 优先于商品图')
+page.group = { id: 7, lid: 8, name: '团购', img: 'https://example.com/group.png', info: '<p><img src=https://example.com/content.png /></p>', goods: [{ img: 'https://example.com/goods.png' }] }
+assert.equal(page.shareCover(''), 'https://example.com/content.png', '活动内容图片最优先，且兼容无引号 src')
+page.group = { id: 7, lid: 8, name: '团购', img: '', goods: [{ img: 'https://example.com/goods.png' }, { img: 'https://example.com/goods2.png' }] }
+assert.equal(page.shareCover(''), 'https://example.com/goods.png', '活动无图时只取第一个商品的第一张图')
 page.group = { id: 7, lid: 8, name: '团购', img: '' }
 assert.equal(page.shareCover(''), 'https://shopgroup.obs.cn-north-9.myhuaweicloud.com/logo.png')
+// 整团分享优先用预先生成的「全图展示」5:4 封面
+page.groupShareCover = '/tmp/group-cover.jpg'
+assert.equal(page.shareData.imageUrl, '/tmp/group-cover.jpg', '整团分享使用全图展示封面')
+page.groupShareCover = ''
 
 // 面板按钮必须把商品信息挂到 dataset 上，页面 onShareAppMessage 才能拿到当前商品
 const posterSource = fs.readFileSync(new URL('../pagesA/group/poster.vue', import.meta.url), 'utf8')
@@ -153,4 +161,20 @@ assert.match(detailPageSource, /preloadGoodsShareCovers\(\)\{[\s\S]*?slice\(0, 2
 assert.match(detailPageSource, /this\.preloadGoodsShareCovers\(\)/)
 // 面板打开期间封面画好要立刻放开按钮
 assert.match(detailPageSource, /if \(this\.activeGoodsShare && Number\(this\.activeGoodsShare\.goodsId\) === goodsId\) \{[\s\S]*?this\.goodsShareCoverReady = true/)
+// ===== 分享卡片「已售N单」= 商品虚拟单数 + 该商品在本活动中的真实单数（groupNum）=====
+page.group = { id: 7, lid: 8, name: '团购', order: 10, virtual: 2, joinTimes: 3 }
+page.goodsSoldCountMap = { 9: 38 }
+assert.equal(page.resolveGoodsSoldCount({ gid: 9, order: 5, virtual: 1 }), 38, '商品级 groupNum 优先于商品/活动兜底字段')
+page.goodsSoldCountMap = {}
+assert.equal(page.resolveGoodsSoldCount({ order: 5, virtual: 1 }), 6, '商品维度 order + virtual')
+assert.equal(page.resolveGoodsSoldCount({ gid: 1 }), 12, '商品没下发销量时回退团购 order + virtual')
+page.group = { id: 7, name: '团购', joinTimes: 3 }
+assert.equal(page.resolveGoodsSoldCount({ gid: 1 }), 3, '都没有时回退跟团人次')
+// 封面绘制走这个口径，不再直接用跟团人次
+assert.match(detailPageSource, /soldText: formatShareSales\(this\.resolveGoodsSoldCount\(goods\)\)/)
+assert.doesNotMatch(detailPageSource, /soldText: formatShareSales\(this\.group\.joinTimes\)/)
+// 商品归一化要保留销量字段，否则封面拿不到 order/virtual
+const leaderGroupUtilSource = fs.readFileSync(new URL('../utils/leaderGroup.js', import.meta.url), 'utf8')
+assert.match(leaderGroupUtilSource, /order: Number\(item\.order \|\| 0\)/)
+assert.match(leaderGroupUtilSource, /virtual: Number\(item\.virtual \|\| item\.virtualOrder \|\| 0\)/)
 console.log('leaderGroupShare tests passed')

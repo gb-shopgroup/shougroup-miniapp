@@ -123,6 +123,8 @@ export function normalizeGroupGoods(item = {}) {
 		id: Number(item.id || item.gid || item.goodsId || 0),
 		name: item.name || item.gname || item.goodsName || '',
 		img: item.img || item.goodsImg || '',
+		// 已团数：接口字段 groupNum（商品真实订单数 + 商品虚拟订单数，实时计算），兼容旧字段 orderNum/soldNum
+		groupNum: Number(item.groupNum !== undefined && item.groupNum !== null ? item.groupNum : (item.orderNum || item.soldNum || 0)),
 		price: Number(item.price || 0),
 		price2: Number(item.price2 || 0),
 		type: Number(item.type || item.gtype || 0),

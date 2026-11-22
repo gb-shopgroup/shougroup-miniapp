@@ -80,6 +80,12 @@
 			<text class="label required">单位</text>
 			<input class="row-input" v-model="formData.unit" placeholder="请输入商品单位" />
 		</view>
+
+		<!-- 虚拟订单数随商品提交（字段名 virtual），展示在商品详情/分享的已团单数里 -->
+		<view class="form-row">
+			<text class="label">虚拟订单数</text>
+			<input class="row-input" type="number" v-model="formData.virtual" placeholder="默认为0" />
+		</view>
 	</view>
 
 	<view class="bottom-action">
@@ -135,6 +141,7 @@ export default {
 				goodsInfo: '',
 				isStock: 0,
 				stockNum: '',
+				virtual: 0,
 				isLimit: 0,
 				limitNum: '',
 				unit: '',

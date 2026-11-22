@@ -148,7 +148,10 @@ export function normalizeLeaderGroupGoods(item = {}) {
 		price2: Number(item.price2 || item.marketPrice || 0),
 		stock: formatGroupGoodsStock(item),
 		// 团购商品行自身的上下架状态（非 0 即已下架），活动详情页据此展示灰色图与上架/下架按钮
-		isClose: Number(item.isClose || 0)
+		isClose: Number(item.isClose || 0),
+		// 商品销量口径：真实订单数 + 虚拟订单数（分享卡片「已售N单」用它）
+		order: Number(item.order || 0),
+		virtual: Number(item.virtual || item.virtualOrder || 0)
 	}
 }
 
@@ -203,7 +206,8 @@ export function normalizeLeaderGroup(row = {}) {
 	const summary = row.groupSummaryResponse && typeof row.groupSummaryResponse === 'object' ? row.groupSummaryResponse : null
 	// 跟团汇总：成员/跟团人次（订单数），由接口的 genTuanResponse 单独下发，与列表卡片的「跟团人数」口径不同。
 	const genTuan = row.genTuanResponse && typeof row.genTuanResponse === 'object' ? row.genTuanResponse : null
-	const legacyJoinCount = row.joinCount || row.joinNum || row.groupNum || row.orderNum || row.order || shop.joinCount || shop.joinNum || shop.groupNum || shop.orderNum || 0
+	// row.groupNum 现在是商品级「已团数」（真实订单 + 虚拟订单），不能再当活动级跟团人数兜底。
+	const legacyJoinCount = row.joinCount || row.joinNum || row.orderNum || row.order || shop.joinCount || shop.joinNum || shop.groupNum || shop.orderNum || 0
 	const leaderAvatar = row.leaderAvatar || row.shopLogo || row.logo || row.shopAvatar || row.avatar || row.headImg || row.headimgurl || row.wxAvatar ||
 		shop.shopLogo || shop.logo || shop.shopAvatar || shop.avatar || shop.headImg || shop.headimgurl || shop.wxAvatar || ''
 	const normalized = {
@@ -279,7 +283,6 @@ export function buildLeaderGroupSubmitPayload(form = {}) {
 		// GroupActRequest：标签字段为 tagId（0=未选择）
 		tagId: toNumber(form.tagId || 0),
 		pointId: toNumber(form.pointId || form.pid || form.point || 0),
-		virtual: Number(form.virtual || 0),
 		startTime: toNumber(form.startTime),
 		endTime: toNumber(form.endTime),
 		goods: submitGoods,
@@ -307,7 +310,6 @@ export function buildLeaderGroupCopyDraft(group = {}) {
 		label: source.label,
 		pointId: source.pointId,
 		pointName: source.pointName,
-		virtual: source.virtual,
 		startTime: '',
 		endTime: '',
 		goods: source.goods

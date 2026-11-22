@@ -94,13 +94,13 @@ assert.deepEqual(buildMemberHomeListPayload({ leaderId: 9, keyword: '苹果' }),
 	leaderId: 9,
 	page: 1,
 	pageSize: 10,
-	groupName: '苹果'
+	goodsName: '苹果'
 })
 assert.deepEqual(buildMemberHomeListPayload({ leaderId: 9, keyword: '苹果', catId: 3 }), {
 	leaderId: 9,
 	page: 1,
 	pageSize: 10,
-	groupName: '苹果',
+	goodsName: '苹果',
 	catId: 3
 })
 assert.equal(Object.prototype.hasOwnProperty.call(buildMemberHomeListPayload({ leaderId: 0 }), 'longitude'), false)
@@ -591,6 +591,8 @@ assert.equal(apiSource.includes("url: '/group/groupActivity/logs2'"), false)
 assert.equal(apiSource.includes("url: '/order/group/groupActivity/logs'"), false)
 assert.equal(apiSource.includes('withGroupLogId'), false)
 assert.equal(apiSource.includes('withLogId'), true)
+// 商品分享落地：logs2 支持带 goodsId，按商品过滤跟团记录
+assert.equal(apiSource.includes('if (goodsId > 0) data.goodsId = goodsId'), true)
 assert.equal(apiSource.includes("url: '/order/group/groupActivity/view'"), true)
 assert.equal(apiSource.includes('export function reportMemberGroupView'), true)
 assert.equal(apiSource.includes("url: '/user/member/swap/getInfo'"), true)
@@ -638,7 +640,9 @@ assert.equal(homeSource.includes('src="/static/image/logo.png"'), true)
 assert.equal(homeSource.includes("item.leaderAvatar || '/static/image/head.png'"), true)
 assert.equal(homeSource.includes("item.leaderName || '团长'"), true)
 assert.equal(homeSource.includes('item.label'), true)
-assert.equal(homeSource.includes('item.joinText'), true)
+// 首页卡片已去掉「N人查看 | N次跟团」统计文案（数据层 joinText 保留，页面不再展示）
+assert.equal(homeSource.includes('item.joinText'), false)
+assert.equal(homeSource.includes('item.viewText'), false)
 // 卡片标签改为「切图 + 药丸」：三张切图分别对应 B 端三个标签选项
 assert.equal(homeSource.includes('isWarmLabel'), false)
 assert.equal(homeSource.includes("class=\"group-label\" v-if=\"item.labelStyle\""), true)
@@ -804,6 +808,8 @@ const groupDetailSource = fs.readFileSync(new URL('../pages/group/index.vue', im
 assert.equal(groupDetailSource.includes('getLeaderGroupLogs'), false)
 assert.equal(groupDetailSource.includes('getLeaderGroupLogs2'), false)
 assert.equal(groupDetailSource.includes('getMemberGroupActivityLogs2'), true)
+// 调 logs2 时把落地商品 id 一起传（普通进入 focusGoodsId=0，api 层不携带该字段）
+assert.equal(groupDetailSource.includes('goodsId:this.focusGoodsId'), true)
 assert.equal(groupDetailSource.includes('resolveMemberHomeLogsData(res.data)'), true)
 assert.equal(groupDetailSource.includes('normalizeMemberHomeRecord'), true)
 assert.equal(groupDetailSource.includes('normalizeGroupLogs(logs = [])'), true)

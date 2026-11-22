@@ -9,7 +9,7 @@
 		</view>
 		<view class="header-search">
 			<view class="search-icon"></view>
-			<input class="search-input" v-model="keyword" placeholder="" confirm-type="search" @confirm="submitSearch" />
+			<input class="search-input" v-model="keyword" placeholder="搜索商品名称" confirm-type="search" @input="handleSearchInput" @confirm="submitSearch" />
 		</view>
 	</view>
 	<scroll-view class="category-scroll" scroll-x>
@@ -32,7 +32,7 @@
 			<image class="leader-avatar" :src="item.leaderAvatar || '/static/image/head.png'" mode="aspectFill"></image>
 			<view class="leader-meta">
 				<view class="leader-name">{{ item.leaderName || '团长' }}</view>
-				<view class="leader-sub" v-if="item.label || item.timeText || item.viewText || item.joinText || item.distanceText">
+				<view class="leader-sub" v-if="item.label || item.timeText || item.distanceText">
 					<view class="group-label" v-if="item.labelStyle" :class="'tone-' + item.labelStyle.tone"
 						:style="{ color: item.labelStyle.color, borderColor: item.labelStyle.color }">
 						<view class="label-badge" v-if="item.labelStyle.icon || item.labelStyle.ring">
@@ -42,9 +42,7 @@
 						<text class="label-text">{{ item.labelStyle.text }}</text>
 					</view>
 					<text v-if="item.timeText">{{ item.timeText }}</text>
-					<text v-if="item.viewText">{{ (item.label || item.timeText) ? ' | ' : '' }}{{ item.viewText }}人查看</text>
-					<text v-if="item.joinText">{{ (item.label || item.timeText || item.viewText) ? ' | ' : '' }}{{ item.joinText }}次跟团</text>
-					<text v-if="item.distanceText">{{ (item.label || item.timeText || item.viewText || item.joinText) ? ' | ' : '' }}{{ item.distanceText }}</text>
+					<text v-if="item.distanceText">{{ (item.label || item.timeText) ? ' | ' : '' }}{{ item.distanceText }}</text>
 				</view>
 			</view>
 		</view>
@@ -139,6 +137,12 @@ export default {
 		logScanEntry('首页', options)
 		this.initGroupCatList()
 		this.prepareRecommendation()
+	},
+	onUnload() {
+		if (this.searchTimer) {
+			clearTimeout(this.searchTimer)
+			this.searchTimer = null
+		}
 	},
 	onShow() {
 		// 登录成功后从登录页 switchTab 回首页不会重跑 onLoad：
@@ -257,7 +261,9 @@ export default {
 				const list = resolveMemberHomeListData(res.data)
 				const listWithShopInfo = await this.mergeGroupShopInfo(list)
 				this.groupList = this.page === 1 ? listWithShopInfo : this.groupList.concat(listWithShopInfo)
-				this.hasMore = list.length >= this.pageSize
+				// 文档：goodsName 过滤在后端结果中完成，分页按过滤前条数计算，搜索时单页可能少于 pageSize；
+			// 搜索时只要本页有结果就允许继续加载，避免漏掉后面页的匹配活动。
+			this.hasMore = this.keyword ? list.length > 0 : list.length >= this.pageSize
 			} catch (err) {
 				console.log('获取团购列表失败：', err)
 				uni.showToast({ title: '获取团购列表失败', icon: 'none' })
@@ -428,8 +434,21 @@ export default {
 			
 			return Number(this.catId || 0) === Number(item && item.id || 0)
 		},
+		// 输入商品名称后防抖查询，避免每敲一个字都发请求
+		handleSearchInput(e){
+			this.keyword = (e && e.detail && e.detail.value) || ''
+			if (this.searchTimer) clearTimeout(this.searchTimer)
+			this.searchTimer = setTimeout(() => {
+				this.searchTimer = null
+				this.submitSearch()
+			}, 300)
+		},
 		// 提交团购搜索
 		async submitSearch(){
+			if (this.searchTimer) {
+				clearTimeout(this.searchTimer)
+				this.searchTimer = null
+			}
 			this.keyword = this.keyword.trim()
 			await this.refreshGroupList()
 		},
